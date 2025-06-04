@@ -75,7 +75,7 @@ export default function IssuePointsPage() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label htmlFor="business" className="block text-sm font-medium text-slate-700 mb-1 flex items-center">
+            <label htmlFor="business" className="text-sm font-medium text-slate-700 mb-1 flex items-center">
               <ListChecks size={16} className="mr-2 text-slate-500" /> Select Business Program
             </label>
             <select
@@ -97,10 +97,7 @@ export default function IssuePointsPage() {
           </div>
 
           <div>
-            <label
-              htmlFor="customerAddress"
-              className="block text-sm font-medium text-slate-700 mb-1 flex items-center"
-            >
+            <label htmlFor="customerAddress" className="text-sm font-medium text-slate-700 mb-1 flex items-center">
               <UserPlus size={16} className="mr-2 text-slate-500" />
               Customer Wallet Address
             </label>

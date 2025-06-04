@@ -1,75 +1,45 @@
-const hre = require("hardhat");
+const { ethers } = require("hardhat");
 const fs = require("fs");
 const path = require("path");
 
 async function main() {
-  const [deployer] = await hre.ethers.getSigners();
-
+  // Get the deployer account (Hardhat's default signer)
+  const [deployer] = await ethers.getSigners();
   console.log("Deploying contracts with the account:", deployer.address);
 
-  // Deploy LoyaltyProgramFactory
-  const LoyaltyProgramFactory = await hre.ethers.getContractFactory("LoyaltyProgramFactory");
-  const factory = await LoyaltyProgramFactory.deploy(deployer.address); // Factory owner is the deployer
-  await factory.waitForDeployment();
-  console.log("LoyaltyProgramFactory deployed to:", factory.target);
+  // Deploy LoyaltyTokenFactory
+  const LoyaltyTokenFactory = await ethers.getContractFactory("LoyaltyTokenFactory");
+  const loyaltyTokenFactory = await LoyaltyTokenFactory.deploy();
+  await loyaltyTokenFactory.waitForDeployment(); // Use waitForDeployment() for ethers v6+
 
-  // Save Factory ABI and address
-  const factoryAbiPath = path.join(__dirname, "../../api/contractsData/LoyaltyProgramFactory_ABI.json");
-  const factoryArtifact = await hre.artifacts.readArtifact("LoyaltyProgramFactory");
-  fs.writeFileSync(factoryAbiPath, JSON.stringify(factoryArtifact.abi, null, 2));
-  console.log("LoyaltyProgramFactory ABI saved to:", factoryAbiPath);
+  const factoryAddress = loyaltyTokenFactory.target; // Use .target for ethers v6+
+  console.log("LoyaltyTokenFactory deployed to:", factoryAddress);
 
-  const deployedFactoriesPath = path.join(__dirname, "../../api/contractsData/deployedFactories.json");
-  const deployedFactories = {
-    address: factory.target,
-    owner: deployer.address,
-  };
-  fs.writeFileSync(deployedFactoriesPath, JSON.stringify(deployedFactories, null, 2));
-  console.log("LoyaltyProgramFactory address saved to:", deployedFactoriesPath);
-
-  // Deploy a default LoyaltyToken using the factory
-  const defaultBusinessId = "DefaultBusinessToken";
-  const defaultTokenName = "Default Business Token";
-  const defaultTokenSymbol = "DBT";
-  const defaultTokenDecimals = 0;
-  const defaultBusinessOwnerAddress = deployer.address; // The deployer will also own this default token
-
-  console.log(`\nDeploying default LoyaltyToken for business ID: ${defaultBusinessId}`);
-  const tx = await factory.deployLoyaltyProgram(
-    defaultBusinessId,
-    defaultTokenName,
-    defaultTokenSymbol,
-    defaultTokenDecimals,
-    defaultBusinessOwnerAddress
-  );
-  await tx.wait(); // Wait for the transaction to be mined
-
-  const [tokenAddress, name, symbol, ownerAddress] = await factory.getLoyaltyProgramDetails(defaultBusinessId);
-  console.log(`Default LoyaltyToken deployed at: ${tokenAddress}`);
-  console.log(`Default LoyaltyToken owner: ${ownerAddress}`);
-
-  // Save LoyaltyToken ABI (still needed for direct interaction)
-  const loyaltyTokenAbiPath = path.join(__dirname, "../../api/contractsData/LoyaltyToken_ABI.json");
-  const loyaltyTokenArtifact = await hre.artifacts.readArtifact("LoyaltyToken");
-  fs.writeFileSync(loyaltyTokenAbiPath, JSON.stringify(loyaltyTokenArtifact.abi, null, 2));
-  console.log("LoyaltyToken ABI saved to:", loyaltyTokenAbiPath);
-
-  // Update businessContracts.json to reflect the new factory-deployed token
-  const businessContractsPath = path.join(__dirname, "../../api/contractsData/businessContracts.json");
-  let businessContracts = {};
-  if (fs.existsSync(businessContractsPath)) {
-    businessContracts = JSON.parse(fs.readFileSync(businessContractsPath));
+  // Save contract addresses and ABIs to a JSON file
+  const contractsDir = path.join(__dirname, "../../api/contracts");
+  if (!fs.existsSync(contractsDir)) {
+    fs.mkdirSync(contractsDir, { recursive: true });
   }
 
-  businessContracts[defaultBusinessId] = {
-    address: tokenAddress,
-    name: name,
-    symbol: symbol,
-    owner: ownerAddress,
-  };
+  // FIX: Get ABI directly from interface.fragments and stringify it
+  const factoryAbi = JSON.stringify(loyaltyTokenFactory.interface.fragments, null, 2);
+  const loyaltyTokenAbi = JSON.stringify(
+    (await ethers.getContractFactory("LoyaltyToken")).interface.fragments,
+    null,
+    2
+  );
 
-  fs.writeFileSync(businessContractsPath, JSON.stringify(businessContracts, null, 2));
-  console.log("Default business contract details saved to:", businessContractsPath);
+  const contractAddressesPath = path.join(contractsDir, "contract-addresses.json");
+  const factoryAbiPath = path.join(contractsDir, "LoyaltyTokenFactory_ABI.json");
+  const loyaltyTokenAbiPath = path.join(contractsDir, "LoyaltyToken_ABI.json");
+
+  fs.writeFileSync(contractAddressesPath, JSON.stringify({ LoyaltyTokenFactory: factoryAddress }, null, 2));
+  fs.writeFileSync(factoryAbiPath, factoryAbi);
+  fs.writeFileSync(loyaltyTokenAbiPath, loyaltyTokenAbi);
+
+  console.log("Contract addresses saved to:", contractAddressesPath);
+  console.log("LoyaltyTokenFactory ABI saved to:", factoryAbiPath);
+  console.log("LoyaltyToken ABI saved to:", loyaltyTokenAbiPath);
 
   // Also copy LoyaltyToken_ABI.json to frontend/public
   const frontendAbiPath = path.join(__dirname, "../../frontend/public/LoyaltyToken_ABI.json");

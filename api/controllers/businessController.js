@@ -73,8 +73,8 @@ exports.createLoyaltyProgram = async (req, res, next) => {
     // This is crucial for existing loyaltyController/service to find the contract
     businessService.addOrUpdateBusinessContract(business.id, {
       address: programDetails.contractAddress,
-      name: programName, // Use name from request body
-      symbol: programSymbol, // Use symbol from request body
+      name: name, // Use name from request body
+      symbol: symbol, // Use symbol from request body
       owner: programDetails.owner,
     });
 

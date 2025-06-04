@@ -1,116 +1,173 @@
 "use client";
-
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { ethers } from "ethers";
 
-// NEW: Wagmi Imports for MetaMask/Injected Provider
-import { WagmiConfig, createConfig, http } from "wagmi"; // Removed createWeb3Modal, defaultWagmiConfig
-import { mainnet, sepolia, arbitrum, optimism } from "wagmi/chains"; // Keep chains you need
-
+// Create a context for Web3
 const Web3Context = createContext(null);
 
-export const useWeb3 = () => useContext(Web3Context);
-
-// NEW: 1. Setup Wagmi config for injected provider (MetaMask)
-// No projectId needed for direct MetaMask connection
-const wagmiConfig = createConfig({
-  chains: [mainnet, sepolia, arbitrum, optimism], // Define the chains your app supports
-  transports: {
-    // Configure HTTP transport for each chain, or use injected for MetaMask
-    [mainnet.id]: http(),
-    [sepolia.id]: http(),
-    [arbitrum.id]: http(),
-    [optimism.id]: http(),
-  },
-});
-
+// Web3 Provider component
 export const Web3Provider = ({ children }) => {
-  // Existing ethers.js states
   const [provider, setProvider] = useState(null);
   const [signer, setSigner] = useState(null);
   const [account, setAccount] = useState(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const connectWallet = useCallback(async () => {
-    setError(null);
-    setIsLoading(true);
-    if (typeof window.ethereum !== "undefined") {
-      try {
-        const web3Provider = new ethers.BrowserProvider(window.ethereum);
-        setProvider(web3Provider);
+  // Use refs to store the latest provider and signer instances.
+  // This allows event handlers to access the current instances without
+  // being dependent on the state variables directly, preventing re-renders
+  // in the useEffect's dependency array.
+  const providerRef = useRef(null);
+  const signerRef = useRef(null);
 
-        const accounts = await web3Provider.send("eth_requestAccounts", []);
-        if (accounts.length > 0) {
-          const web3Signer = await web3Provider.getSigner();
-          setSigner(web3Signer);
-          setAccount(accounts[0]);
-        } else {
-          setError("No accounts found. Please unlock MetaMask or create an account.");
-        }
-      } catch (err) {
-        console.error("Error connecting to wallet:", err);
-        if (err.code === 4001) {
-          setError("Connection request denied by user.");
-        } else {
-          setError("Failed to connect wallet. Make sure MetaMask is installed and configured.");
-        }
-        setAccount(null);
-        setSigner(null);
-        setProvider(null);
-      }
-    } else {
-      setError("MetaMask is not installed. Please install MetaMask to use this application.");
-      setAccount(null);
-      setSigner(null);
-      setProvider(null);
-    }
-    setIsLoading(false);
-  }, []);
+  // Update refs whenever state changes
+  useEffect(() => {
+    providerRef.current = provider;
+  }, [provider]);
 
-  const disconnectWallet = () => {
+  useEffect(() => {
+    signerRef.current = signer;
+  }, [signer]);
+
+  // Function to disconnect wallet (stable with useCallback)
+  const disconnectWallet = useCallback(() => {
     setProvider(null);
     setSigner(null);
     setAccount(null);
     setError(null);
     console.log("Wallet disconnected (app state cleared).");
-  };
+  }, []);
 
-  useEffect(() => {
-    setIsLoading(false); // Initial load complete
+  // Function to connect wallet (user-initiated, stable with useCallback)
+  const connectWallet = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      if (window.ethereum) {
+        const ethProvider = new ethers.BrowserProvider(window.ethereum);
+        setProvider(ethProvider); // This updates the state and subsequently providerRef.current
+        const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+        const selectedAccount = accounts[0];
+        setAccount(selectedAccount);
+        const ethSigner = await ethProvider.getSigner();
+        setSigner(ethSigner); // This updates the state and subsequently signerRef.current
+        console.log("Wallet connected:", selectedAccount);
+      } else {
+        setError("MetaMask or a compatible wallet is not detected. Please install one.");
+        console.warn("MetaMask or a compatible wallet is not detected.");
+      }
+    } catch (err) {
+      console.error("Failed to connect wallet:", err);
+      setError(err.message || "Failed to connect wallet. Please ensure your wallet is unlocked and try again.");
+      disconnectWallet(); // Clear state on connection failure
+    } finally {
+      setIsLoading(false);
+    }
+  }, [disconnectWallet]);
 
-    if (window.ethereum) {
-      const handleAccountsChanged = (accounts) => {
-        if (accounts.length > 0) {
-          setAccount(accounts[0]);
-          if (provider) {
-            provider.getSigner().then(setSigner).catch(console.error);
+  // Handler for accounts changed event (stable with useCallback)
+  const handleAccountsChanged = useCallback(
+    async (accounts) => {
+      if (accounts.length > 0) {
+        const newAccount = accounts[0];
+        setAccount(newAccount); // Always update account state
+
+        // If a provider instance exists in the ref, try to get a new signer for the new account.
+        // This avoids depending directly on the 'provider' state variable in this callback's dependencies.
+        if (providerRef.current) {
+          try {
+            const newSigner = await providerRef.current.getSigner();
+            setSigner(newSigner);
+          } catch (err) {
+            console.error("Error getting signer on accountsChanged:", err);
+            setSigner(null); // Clear signer if error
           }
         } else {
-          disconnectWallet();
+          // If no provider exists in the ref, it means the wallet wasn't fully initialized
+          // or was disconnected. Attempt a full re-connection to establish provider and signer.
+          connectWallet();
         }
-      };
+      } else {
+        // No accounts found, disconnect
+        disconnectWallet();
+      }
+    },
+    [connectWallet, disconnectWallet]
+  ); // Dependencies are other stable callbacks
 
-      const handleChainChanged = () => {
-        window.location.reload();
-      };
+  // Handler for chain changed event (stable with useCallback)
+  const handleChainChanged = useCallback(() => {
+    console.log("Chain changed. Reloading page.");
+    window.location.reload();
+  }, []); // No dependencies needed as it performs a full page reload
 
-      window.ethereum.on("accountsChanged", handleAccountsChanged);
-      window.ethereum.on("chainChanged", handleChainChanged);
+  // Effect to initialize wallet connection on app load and set up event listeners
+  useEffect(() => {
+    const initializeOnLoad = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        if (window.ethereum) {
+          // Check if accounts are already connected (does not prompt user)
+          const accounts = await window.ethereum.request({ method: "eth_accounts" });
+          if (accounts.length > 0) {
+            const selectedAccount = accounts[0];
+            setAccount(selectedAccount);
 
-      return () => {
+            const ethProvider = new ethers.BrowserProvider(window.ethereum);
+            setProvider(ethProvider);
+            const ethSigner = await ethProvider.getSigner();
+            setSigner(ethSigner);
+            console.log("Wallet auto-connected on load:", selectedAccount);
+          } else {
+            console.log("No accounts found on load. Wallet not auto-connected.");
+          }
+
+          // Attach event listeners using the stable useCallback handlers
+          window.ethereum.on("accountsChanged", handleAccountsChanged);
+          window.ethereum.on("chainChanged", handleChainChanged);
+        } else {
+          setError("MetaMask or a compatible wallet is not detected. Please install one.");
+          console.warn("MetaMask or a compatible wallet is not detected.");
+        }
+      } catch (err) {
+        console.error("Error during wallet initialization on load:", err);
+        setError(err.message || "Failed to initialize wallet on load.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeOnLoad();
+
+    // Cleanup function for event listeners
+    return () => {
+      if (window.ethereum) {
         window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
         window.ethereum.removeListener("chainChanged", handleChainChanged);
-      };
-    }
-  }, [provider, disconnectWallet]);
+      }
+    };
+  }, [handleAccountsChanged, handleChainChanged]); // Dependencies are the stable callback functions
 
-  return (
-    // Wrap the entire Web3Context.Provider with WagmiConfig
-    <WagmiConfig config={wagmiConfig}>
-      <Web3Context.Provider value={{ provider, signer, account, isLoading, error, connectWallet, disconnectWallet }}>
-        {children}
-      </Web3Context.Provider>
-    </WagmiConfig>
-  );
+  // The value exposed by the context provider
+  const value = {
+    provider,
+    signer,
+    account,
+    error,
+    isLoading,
+    connectWallet,
+    disconnectWallet,
+  };
+
+  return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>;
+};
+
+// Custom hook to use the Web3 context
+export const useWeb3 = () => {
+  const context = useContext(Web3Context);
+  if (context === undefined) {
+    throw new Error("useWeb3 must be used within a Web3Provider");
+  }
+  return context;
 };

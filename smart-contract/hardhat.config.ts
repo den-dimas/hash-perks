@@ -9,15 +9,8 @@ export default {
     },
     localhost: {
       // For connecting to a separate Ganache instance or Hardhat node
-      url: "http://127.0.0.1:8545",
-      chainId: 1337,
+      url: "http://127.0.0.1:8545", // Default Ganache RPC URL
     },
-  },
-  paths: {
-    sources: "./contracts",
-    tests: "./test",
-    cache: "./cache",
-    artifacts: "./artifacts", // Output directory for ABIs and bytecode
   },
 };
 

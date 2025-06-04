@@ -1,178 +1,269 @@
-// frontend/app/(components)/auth/RegisterForm.jsx
 "use client";
-import { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, UserPlus, Mail, User, Briefcase, Wallet, LogIn } from "lucide-react";
-import { useAccount } from "wagmi"; // To get connected wallet address
 
-export const RegisterForm = ({ type, onRegisterSuccess }) => {
-  const { handleUserRegister, handleBusinessRegister, loading } = useAuth();
+import { useState, useEffect } from "react";
+import { useWeb3 } from "@/contexts/Web3Context";
+import { useAccount } from "wagmi"; // Import useAccount from wagmi
+import { Loader2, CheckCircle, XCircle, Wallet } from "lucide-react";
+import { ethers } from "ethers"; // For address validation
+
+// RegisterForm component now accepts specific handlers for user and business registration
+export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
+  // State for form fields
+  const [userId, setUserId] = useState(""); // For user registration
+  const [businessId, setBusinessId] = useState(""); // For business registration
+  const [businessName, setBusinessName] = useState(""); // For business registration
+  const [businessSymbol, setBusinessSymbol] = useState(""); // For business registration
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [walletAddress, setWalletAddress] = useState(""); // For both user and business owner address
+
+  const [message, setMessage] = useState(null); // For success/error messages
+  const [formError, setFormError] = useState(null); // For form validation errors
+  const [isLoading, setIsLoading] = useState(false);
+
+  const { connectWallet, account, isLoading: isWeb3Loading } = useWeb3();
 
   // CRITICAL: Call useAccount unconditionally at the top level, as per React Rules of Hooks.
   // The value will be defensively used based on 'mounted' state.
   const { address: wagmiConnectedWalletAddress } = useAccount();
 
   // State to track if the component has fully mounted on the client
-  // This helps guard against hydration timing issues, even with dynamic(ssr: false)
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
-  }, []); // Empty dependency array means this runs once on client mount
+  }, []);
 
-  const [username, setUsername] = useState(""); // For user
-  const [email, setEmail] = useState(""); // For business
-  const [name, setName] = useState(""); // For business
-  const [password, setPassword] = useState("");
-  const [walletAddress, setWalletAddress] = useState(""); // Local state for the input field
-  const [error, setError] = useState("");
-
-  // Use useEffect to set walletAddress when wagmiConnectedWalletAddress changes
-  // AND only after the component is confirmed as mounted.
+  // Sync walletAddress state with connected account from Web3Context
   useEffect(() => {
-    if (mounted && wagmiConnectedWalletAddress) {
-      setWalletAddress(wagmiConnectedWalletAddress);
-    } else if (mounted && !wagmiConnectedWalletAddress) {
-      // If mounted but no wallet connected, ensure field is empty or user-inputted
-      // This allows manual input if wallet not connected or disconnected
-      setWalletAddress("");
+    if (mounted && account) {
+      setWalletAddress(account);
     }
-  }, [mounted, wagmiConnectedWalletAddress]); // Depend on mounted and wagmiConnectedWalletAddress
+  }, [mounted, account]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-    let result;
+    setMessage(null);
+    setFormError(null);
+    setIsLoading(true);
 
-    if (type === "user") {
-      result = await handleUserRegister(username, password, walletAddress);
-    } else {
-      // type === 'business'
-      result = await handleBusinessRegister(name, email, password, walletAddress);
+    // Basic form validation
+    if (!password || !confirmPassword) {
+      setFormError("Password and Confirm Password are required.");
+      setIsLoading(false);
+      return;
+    }
+    if (password !== confirmPassword) {
+      setFormError("Passwords do not match.");
+      setIsLoading(false);
+      return;
+    }
+    if (!walletAddress || !ethers.isAddress(walletAddress)) {
+      setFormError("A valid wallet address is required.");
+      setIsLoading(false);
+      return;
     }
 
-    if (!result.success) {
-      setError(result.error);
-    } else {
-      onRegisterSuccess && onRegisterSuccess();
+    let result;
+    try {
+      if (type === "user") {
+        if (!userId) {
+          setFormError("User ID is required.");
+          setIsLoading(false);
+          return;
+        }
+        // Call the passed-in user registration handler
+        result = await onUserRegister(userId, password, walletAddress);
+      } else {
+        // type === 'business'
+        if (!businessId || !businessName || !businessSymbol) {
+          setFormError("Business ID, Name, and Symbol are required.");
+          setIsLoading(false);
+          return;
+        }
+        // Call the passed-in business registration handler
+        result = await onBusinessRegister(businessId, businessName, businessSymbol, walletAddress, password);
+      }
+
+      if (result && result.success) {
+        setMessage({ type: "success", text: result.message || "Registration successful!" });
+        // Clear form fields on success
+        setUserId("");
+        setBusinessId("");
+        setBusinessName("");
+        setBusinessSymbol("");
+        setPassword("");
+        setConfirmPassword("");
+        setWalletAddress("");
+      } else {
+        setMessage({ type: "error", text: result.message || "Registration failed." });
+      }
+    } catch (err) {
+      console.error("Registration submission error:", err);
+      setMessage({ type: "error", text: err.message || "An unexpected error occurred during registration." });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {error && <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-3 rounded-md text-sm">{error}</div>}
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {message && (
+        <div
+          className={`p-4 rounded-md flex items-center ${
+            message.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+          }`}
+        >
+          {message.type === "success" ? <CheckCircle className="h-5 w-5 mr-2" /> : <XCircle className="h-5 w-5 mr-2" />}
+          {message.text}
+        </div>
+      )}
+
+      {formError && (
+        <div className="p-4 rounded-md bg-red-100 text-red-800 flex items-center">
+          <XCircle className="h-5 w-5 mr-2" />
+          {formError}
+        </div>
+      )}
 
       {type === "user" ? (
         <div>
-          <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-1">
-            Username
+          <label htmlFor="userId" className="block text-sm font-medium text-slate-700 mb-1">
+            User ID:
           </label>
-          <div className="relative">
-            <input
-              type="text"
-              id="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Choose a username"
-              required
-              className="input-field-modern pl-10"
-            />
-            <User size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          </div>
+          <input
+            type="text"
+            id="userId"
+            className="input-field-modern"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            placeholder="Choose a unique user ID"
+            required
+            disabled={isLoading}
+          />
         </div>
       ) : (
+        // Business registration fields
         <>
           <div>
-            <label htmlFor="business-name" className="block text-sm font-medium text-slate-700 mb-1">
-              Business Name
+            <label htmlFor="businessId" className="block text-sm font-medium text-slate-700 mb-1">
+              Business ID:
             </label>
-            <div className="relative">
-              <input
-                type="text"
-                id="business-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Your Business Name"
-                required
-                className="input-field-modern pl-10"
-              />
-              <Briefcase size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            </div>
+            <input
+              type="text"
+              id="businessId"
+              className="input-field-modern"
+              value={businessId}
+              onChange={(e) => setBusinessId(e.target.value)}
+              placeholder="Unique ID for your business"
+              required
+              disabled={isLoading}
+            />
           </div>
           <div>
-            <label htmlFor="business-email" className="block text-sm font-medium text-slate-700 mb-1">
-              Business Email
+            <label htmlFor="businessName" className="block text-sm font-medium text-slate-700 mb-1">
+              Business Name:
             </label>
-            <div className="relative">
-              <input
-                type="email"
-                id="business-email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="business@example.com"
-                required
-                className="input-field-modern pl-10"
-              />
-              <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            </div>
+            <input
+              type="text"
+              id="businessName"
+              className="input-field-modern"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              placeholder="e.g., My Coffee Shop"
+              required
+              disabled={isLoading}
+            />
+          </div>
+          <div>
+            <label htmlFor="businessSymbol" className="block text-sm font-medium text-slate-700 mb-1">
+              Loyalty Token Symbol:
+            </label>
+            <input
+              type="text"
+              id="businessSymbol"
+              className="input-field-modern"
+              value={businessSymbol}
+              onChange={(e) => setBusinessSymbol(e.target.value)}
+              placeholder="e.g., COFFEE (3-5 characters)"
+              maxLength={5}
+              required
+              disabled={isLoading}
+            />
           </div>
         </>
       )}
 
       <div>
         <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
-          Password
+          Password:
         </label>
-        <div className="relative">
-          <input
-            type="password"
-            id="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Create a password"
-            required
-            className="input-field-modern pl-10"
-          />
-          <LogIn size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        </div>
+        <input
+          type="password"
+          id="password"
+          className="input-field-modern"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          disabled={isLoading}
+        />
+      </div>
+      <div>
+        <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-1">
+          Confirm Password:
+        </label>
+        <input
+          type="password"
+          id="confirmPassword"
+          className="input-field-modern"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          required
+          disabled={isLoading}
+        />
       </div>
 
       <div>
-        <label htmlFor="wallet-address" className="block text-sm font-medium text-slate-700 mb-1">
-          Your Wallet Address (for points/ownership)
+        <label htmlFor="walletAddress" className="block text-sm font-medium text-slate-700 mb-1">
+          Your Wallet Address (Owner/Customer):
         </label>
-        <div className="relative">
+        <div className="flex items-center space-x-2">
           <input
             type="text"
-            id="wallet-address"
-            // Use wagmiConnectedWalletAddress if mounted and available, otherwise use local walletAddress state
-            value={mounted ? wagmiConnectedWalletAddress || walletAddress : walletAddress}
+            id="walletAddress"
+            className="input-field-modern flex-grow"
+            value={walletAddress}
             onChange={(e) => setWalletAddress(e.target.value)}
-            placeholder="Connect wallet or enter address"
+            placeholder="0x..."
             required
-            className="input-field-modern pl-10"
-            // Disable if component is mounted AND a wallet address is connected
-            disabled={mounted && !!wagmiConnectedWalletAddress}
+            disabled={isLoading || isWeb3Loading || account} // Disable if already connected
           />
-          <Wallet size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          {/* Only show "Connected" if component is mounted and a wallet address is connected */}
-          {mounted && wagmiConnectedWalletAddress && (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-green-600">Connected</span>
+          {mounted &&
+            !account && ( // Only show connect button if not connected and mounted
+              <button
+                type="button"
+                onClick={connectWallet}
+                className="btn-secondary-light flex-shrink-0"
+                disabled={isWeb3Loading || isLoading}
+              >
+                {isWeb3Loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wallet className="h-5 w-5" />}
+                <span className="ml-2 hidden sm:inline">Connect Wallet</span>
+              </button>
+            )}
+          {mounted && account && (
+            <span className="text-green-600 flex items-center text-sm">
+              <CheckCircle className="h-4 w-4 mr-1" /> Connected
+            </span>
           )}
         </div>
-        {/* Only show message if component is mounted and no wallet address is connected */}
-        {mounted && !wagmiConnectedWalletAddress && (
-          <p className="mt-1 text-xs text-slate-500">Connect your wallet to auto-fill this field.</p>
+        {mounted && !account && (
+          <p className="text-sm text-slate-500 mt-1">Connect your wallet to auto-fill your address.</p>
         )}
       </div>
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="btn-primary-dark w-full flex justify-center items-center !py-3"
-      >
-        {loading ? <Loader2 size={20} className="animate-spin mr-2" /> : <UserPlus size={18} className="mr-2" />}
-        {type === "user" ? "Register as User" : "Register as Business"}
+      <button type="submit" className="btn-primary-dark w-full" disabled={isLoading || isWeb3Loading}>
+        {isLoading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
+        {type === "user" ? "Register as User" : "Register Business"}
       </button>
     </form>
   );
-};
+}

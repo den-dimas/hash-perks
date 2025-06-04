@@ -1,146 +1,112 @@
-// frontend/contexts/AuthContext.js
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { loginUser, loginBusiness } from "@/services/api";
 import { useRouter } from "next/navigation";
-import { loginUser, registerUser, loginBusiness, registerBusiness } from "@/services/api";
 
-const AuthContext = createContext(null);
+const AuthContext = createContext();
 
-export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null); // For user accounts
-  const [business, setBusiness] = useState(null); // For business accounts
-  const [loading, setLoading] = useState(true);
+export function AuthProvider({ children }) {
+  // currentUser will store { id: string, role: 'user' | 'business', token: string }
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(true); // Loading state for initial auth check
   const router = useRouter();
 
+  // Load user from localStorage on initial render
   useEffect(() => {
-    // Load auth state from localStorage on mount
-    const storedUser = localStorage.getItem("hashperks_user");
-    const storedBusiness = localStorage.getItem("hashperks_business");
+    const storedUser = localStorage.getItem("currentUser");
     if (storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        setCurrentUser(JSON.parse(storedUser));
       } catch (e) {
-        console.error("Failed to parse stored user data:", e);
-        localStorage.removeItem("hashperks_user");
+        console.error("Failed to parse stored user from localStorage:", e);
+        localStorage.removeItem("currentUser"); // Clear corrupted data
       }
     }
-    if (storedBusiness) {
-      try {
-        setBusiness(JSON.parse(storedBusiness));
-      } catch (e) {
-        console.error("Failed to parse stored business data:", e);
-        localStorage.removeItem("hashperks_business");
-      }
-    }
-    setLoading(false);
+    setLoading(false); // Auth loading complete after initial check
   }, []);
 
-  const handleUserLogin = async (username, password) => {
+  // Save user to localStorage whenever currentUser changes
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem("currentUser", JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem("currentUser");
+    }
+  }, [currentUser]);
+
+  const login = async (identifier, password, type) => {
     setLoading(true);
+    let response;
     try {
-      const userData = await loginUser(username, password);
-      setUser(userData.user);
-      setBusiness(null); // Ensure only one type of user is logged in
-      localStorage.setItem("hashperks_user", JSON.stringify(userData.user));
-      localStorage.removeItem("hashperks_business"); // Clear business if user logs in
-      router.push("/user-dashboard");
-      return { success: true };
+      if (type === "user") {
+        response = await loginUser(identifier, password);
+        if (response.success) {
+          setCurrentUser({
+            id: response.user.id,
+            role: "user",
+            token: response.user.id, // Placeholder token for simplified auth middleware
+          });
+        }
+      } else if (type === "business") {
+        response = await loginBusiness(identifier, password);
+        if (response.success) {
+          setCurrentUser({
+            id: response.business.id,
+            role: "business",
+            token: response.business.id, // Placeholder token
+          });
+        }
+      } else {
+        throw new Error("Invalid login type provided.");
+      }
+
+      return response; // Return the full response from API for message handling
     } catch (error) {
-      console.error("User login failed:", error);
-      return { success: false, error: error.message || "Login failed" };
+      console.error("AuthContext login error:", error);
+      return { success: false, message: error.message };
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUserRegister = async (username, password, walletAddress) => {
-    setLoading(true);
-    try {
-      const userData = await registerUser(username, password, walletAddress);
-      setUser(userData.user);
-      setBusiness(null);
-      localStorage.setItem("hashperks_user", JSON.stringify(userData.user));
-      localStorage.removeItem("hashperks_business");
-      router.push("/user-dashboard");
-      return { success: true };
-    } catch (error) {
-      console.error("User registration failed:", error);
-      return { success: false, error: error.message || "Registration failed" };
-    } finally {
-      setLoading(false);
-    }
-  };
+  const logout = useCallback(() => {
+    setCurrentUser(null);
+    router.push("/login"); // Redirect to login page on logout
+  }, [router]);
 
-  const handleBusinessLogin = async (email, password) => {
-    setLoading(true);
-    try {
-      const businessData = await loginBusiness(email, password);
-      setBusiness(businessData.business);
-      setUser(null); // Ensure only one type of user is logged in
-      localStorage.setItem("hashperks_business", JSON.stringify(businessData.business));
-      localStorage.removeItem("hashperks_user"); // Clear user if business logs in
-      router.push("/business-dashboard");
-      return { success: true };
-    } catch (error) {
-      console.error("Business login failed:", error);
-      return { success: false, error: error.message || "Login failed" };
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Helper getters derived from currentUser
+  const isAuthenticated = !!currentUser;
+  const isUser = currentUser?.role === "user";
+  const isBusiness = currentUser?.role === "business";
 
-  const handleBusinessRegister = async (name, email, password, ownerWalletAddress) => {
-    setLoading(true);
-    try {
-      const businessData = await registerBusiness(name, email, password, ownerWalletAddress);
-      setBusiness(businessData.business);
-      setUser(null);
-      localStorage.setItem("hashperks_business", JSON.stringify(businessData.business));
-      localStorage.removeItem("hashperks_user");
-      router.push("/business-dashboard");
-      return { success: true };
-    } catch (error) {
-      console.error("Business registration failed:", error);
-      return { success: false, error: error.message || "Registration failed" };
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const logout = () => {
-    setUser(null);
-    setBusiness(null);
-    localStorage.removeItem("hashperks_user");
-    localStorage.removeItem("hashperks_business");
-    router.push("/");
-  };
+  // Expose user and business objects based on role
+  const user = isUser ? currentUser : null;
+  const business = isBusiness ? currentUser : null;
 
   return (
     <AuthContext.Provider
       value={{
-        user,
-        business,
-        loading,
-        handleUserLogin,
-        handleUserRegister,
-        handleBusinessLogin,
-        handleBusinessRegister,
+        currentUser, // Raw current user object
+        user, // User object if role is 'user', else null
+        business, // Business object if role is 'business', else null
+        isAuthenticated,
+        isUser,
+        isBusiness,
+        login,
         logout,
-        isAuthenticated: !!user || !!business,
-        isUser: !!user,
-        isBusiness: !!business,
+        loading, // Auth loading state
       }}
     >
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
-};
+}

@@ -1,4 +1,3 @@
-// backend/middleware/authMiddleware.js
 const authService = require("../services/authService");
 
 const authenticateUser = (req, res, next) => {

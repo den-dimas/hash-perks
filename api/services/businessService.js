@@ -1,57 +1,62 @@
-// backend/services/businessService.js
 const fs = require("fs");
 const path = require("path");
+// REMOVED: const loyaltyService = require("./loyaltyService"); // This caused circular dependency
 
-const businessContractsPath = path.join(__dirname, "..", "contractsData", "businessContracts.json");
-let businessContractMappings = {};
+const BUSINESS_CONTRACTS_FILE = path.join(__dirname, "../data/business-contracts.json");
 
-function loadBusinessContracts() {
-  try {
-    if (fs.existsSync(businessContractsPath)) {
-      const rawData = fs.readFileSync(businessContractsPath);
-      businessContractMappings = JSON.parse(rawData);
-      console.log("Business contract mappings loaded.");
-    } else {
-      console.warn("businessContracts.json not found. Creating empty file.");
-      fs.writeFileSync(businessContractsPath, JSON.stringify({}, null, 2));
-      businessContractMappings = {};
-    }
-  } catch (error) {
-    console.error("Error loading business contract mappings:", error);
-    businessContractMappings = {}; // Reset to empty on error
+let businessContracts = {}; // In-memory store for businessId -> contractAddress mapping
+
+const loadBusinessContracts = () => {
+  if (fs.existsSync(BUSINESS_CONTRACTS_FILE)) {
+    businessContracts = JSON.parse(fs.readFileSync(BUSINESS_CONTRACTS_FILE, "utf8"));
+    console.log("Loaded existing business contracts:", businessContracts);
+  } else {
+    console.log("No existing business contracts file found. Starting fresh.");
+    businessContracts = {}; // Ensure it's empty if file doesn't exist
   }
-}
+};
 
-// Load mappings when the service starts
-loadBusinessContracts();
+const saveBusinessContracts = () => {
+  fs.writeFileSync(BUSINESS_CONTRACTS_FILE, JSON.stringify(businessContracts, null, 2));
+  console.log("Business contracts saved to:", BUSINESS_CONTRACTS_FILE);
+};
 
-function getContractAddress(businessId) {
-  return businessContractMappings[businessId]?.address;
-}
+// MODIFIED: Now accepts deployLoyaltyTokenViaFactory as an argument
+const addBusinessContract = async (businessId, name, symbol, ownerAddress, deployLoyaltyTokenViaFactoryFn) => {
+  // Deploy a new loyalty token contract via the factory
+  const tokenDecimals = 18; // Defaulting to 18 decimals for ERC20 tokens
 
-function getBusinessDetails(businessId) {
-  return businessContractMappings[businessId];
-}
+  // Use the passed function to deploy the token
+  const tokenAddress = await deployLoyaltyTokenViaFactoryFn(
+    name,
+    symbol,
+    tokenDecimals,
+    ownerAddress // The owner of the newly deployed token will be the business owner's wallet
+  );
 
-function getAllBusinesses() {
-  return businessContractMappings;
-}
+  businessContracts[businessId] = {
+    address: tokenAddress,
+    name: name,
+    symbol: symbol,
+    owner: ownerAddress, // Store the business owner's wallet address as the contract owner
+  };
+  saveBusinessContracts();
+  return businessContracts[businessId];
+};
 
-// NEW FUNCTION: Add or update a business contract mapping
-function addOrUpdateBusinessContract(businessId, contractDetails) {
-  businessContractMappings[businessId] = contractDetails;
-  try {
-    fs.writeFileSync(businessContractsPath, JSON.stringify(businessContractMappings, null, 2));
-    console.log(`Business contract mapping for ${businessId} updated/added.`);
-  } catch (error) {
-    console.error(`Error saving business contract mapping for ${businessId}:`, error);
-  }
-}
+const getBusinessContract = (businessId) => {
+  return businessContracts[businessId];
+};
+
+const getAllBusinesses = () => {
+  // Returns an object where keys are businessIds and values are their contract info
+  return businessContracts;
+};
 
 module.exports = {
   loadBusinessContracts,
-  getContractAddress,
-  getBusinessDetails,
+  saveBusinessContracts,
+  addBusinessContract,
+  getBusinessContract,
   getAllBusinesses,
-  addOrUpdateBusinessContract, // Export the new function
 };

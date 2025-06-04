@@ -1,13 +1,13 @@
-// backend/server.js
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const apiRoutes = require("./routes/api"); // Existing loyalty API routes
-const authRoutes = require("./routes/auth"); // NEW auth routes
-const businessRoutes = require("./routes/business"); // NEW business routes
-const userRoutes = require("./routes/user"); // NEW user routes
+const authRoutes = require("./routes/auth"); // Auth routes
+const businessRoutes = require("./routes/business"); // Business routes
+const userRoutes = require("./routes/user"); // NEW: User routes
 const businessService = require("./services/businessService"); // To load business data on start
 const authService = require("./services/authService"); // To load auth data on start
+const userService = require("./services/userService"); // NEW: To load user data on start
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -20,12 +20,13 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bo
 // Initialize services that need to load data on start
 businessService.loadBusinessContracts(); // Load existing business-contract mappings
 authService.loadData(); // Load users and businesses data
+userService.loadUserSubscriptions(); // NEW: Load user subscriptions
 
 // API Routes
 app.use("/api/v1", apiRoutes); // Existing loyalty routes
-app.use("/api/v1/auth", authRoutes); // NEW auth routes
-app.use("/api/v1/business", businessRoutes); // NEW business routes
-app.use("/api/v1/user", userRoutes); // NEW user routes
+app.use("/api/v1/auth", authRoutes); // Auth routes
+app.use("/api/v1/business", businessRoutes); // Business routes
+app.use("/api/v1/user", userRoutes); // NEW: User routes
 
 // Simple root route
 app.get("/", (req, res) => {
@@ -41,12 +42,20 @@ app.use((req, res, next) => {
 
 // Global Error Handler (must have 4 arguments: err, req, res, next)
 app.use((err, req, res, next) => {
-  console.error("Global error handler caught an error:", err.stack || err.message || err);
+  console.error("Global error handler caught an error:");
+  console.error(err.stack || err.message || err); // Log the full error stack
   const statusCode = err.statusCode || 500;
   res.status(statusCode).json({
     error: err.name || "InternalServerError",
     message: err.message || "An unexpected error occurred.",
   });
+});
+
+// Global unhandled promise rejection handler
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  // In production, you might want to gracefully shut down.
+  // process.exit(1);
 });
 
 app.listen(PORT, () => {

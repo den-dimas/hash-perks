@@ -1,79 +1,94 @@
 "use client";
-import Link from "next/link";
-import { ConnectWallet } from "@/app/(components)/wallet/ConnectWallet";
-import { Dot, Briefcase, User, LogOut } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext"; // NEW
 
-export const Navbar = () => {
-  const { user, business, isAuthenticated, logout, isUser, isBusiness } = useAuth();
+import Link from "next/link";
+import { useWeb3 } from "@/contexts/Web3Context";
+import { useAuth } from "@/contexts/AuthContext";
+import { Wallet, LogOut, Loader2, User, Briefcase } from "lucide-react";
+
+export function Navbar() {
+  const { account, connectWallet, disconnectWallet, isLoading: isWeb3Loading } = useWeb3();
+  // Destructure user and business directly from useAuth
+  const { currentUser, user, business, isAuthenticated, isUser, isBusiness, logout, loading: authLoading } = useAuth();
+
+  const displayAddress = account
+    ? `${account.substring(0, 6)}...${account.substring(account.length - 4)}`
+    : "Connect Wallet";
 
   return (
-    <nav className="bg-white/95 backdrop-blur-sm sticky top-0 z-50 border-b border-slate-200/80">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          <Link
-            href="/"
-            className="flex items-center space-x-1.5 text-2xl font-bold text-slate-900 hover:text-polka-pink transition-colors"
-          >
-            <div className="flex items-center">
-              <Dot size={32} className="text-polka-pink -mr-3" />
-              <Dot size={32} className="text-polka-dark" />
-            </div>
-            <span className="-ml-1">HashPerks</span>
+    <nav className="bg-white shadow-sm py-4">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+        {/* Logo/Brand - Reverted to original styling */}
+        <Link href="/" className="text-2xl font-bold text-polka-pink hover:text-polka-dark transition-colors">
+          HashPerks
+        </Link>
+
+        {/* Navigation Links */}
+        <div className="flex items-center space-x-4">
+          <Link href="/" className="text-slate-600 hover:text-polka-pink transition-colors text-lg font-medium">
+            Home
           </Link>
-          <div className="flex items-center space-x-6">
-            <Link href="/" className="text-slate-700 hover:text-polka-pink font-medium transition-colors text-sm">
-              Businesses
+
+          {/* Conditional Dashboard Links based on Auth State */}
+          {authLoading ? (
+            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+          ) : (
+            <>
+              {isAuthenticated &&
+                isUser && ( // Use isUser directly
+                  <Link
+                    href="/user/dashboard"
+                    className="text-slate-600 hover:text-polka-pink transition-colors text-lg font-medium flex items-center"
+                  >
+                    <User className="h-5 w-5 mr-1" /> User Dashboard
+                  </Link>
+                )}
+              {isAuthenticated &&
+                isBusiness && ( // Use isBusiness directly
+                  <Link
+                    href="/business/dashboard"
+                    className="text-slate-600 hover:text-polka-pink transition-colors text-lg font-medium flex items-center"
+                  >
+                    <Briefcase className="h-5 w-5 mr-1" /> Business Dashboard
+                  </Link>
+                )}
+            </>
+          )}
+        </div>
+
+        {/* Wallet & Auth Buttons */}
+        <div className="flex items-center space-x-4">
+          {/* Wallet Connection Button */}
+          <button
+            onClick={account ? disconnectWallet : connectWallet}
+            className={`flex items-center px-4 py-2 rounded-md transition-colors duration-200
+              ${account ? "bg-red-500 hover:bg-red-600 text-white" : "bg-polka-dark hover:bg-slate-800 text-white"}
+              ${isWeb3Loading ? "opacity-60 cursor-not-allowed" : ""}`}
+            disabled={isWeb3Loading}
+          >
+            {isWeb3Loading ? (
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            ) : account ? (
+              <LogOut className="h-5 w-5 mr-2" />
+            ) : (
+              <Wallet className="h-5 w-5 mr-2" />
+            )}
+            {displayAddress}
+          </button>
+
+          {/* Login/Logout based on AuthContext */}
+          {authLoading ? (
+            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+          ) : isAuthenticated ? (
+            <button onClick={logout} className="btn-secondary-light flex items-center">
+              <LogOut className="h-5 w-5 mr-2" /> Logout ({currentUser?.id})
+            </button>
+          ) : (
+            <Link href="/login" className="btn-primary-dark">
+              Login
             </Link>
-
-            {!isAuthenticated && (
-              <>
-                <Link
-                  href="/login"
-                  className="text-slate-700 hover:text-polka-pink font-medium transition-colors text-sm"
-                >
-                  Login
-                </Link>
-                <Link
-                  href="/register"
-                  className="text-slate-700 hover:text-polka-pink font-medium transition-colors text-sm"
-                >
-                  Register
-                </Link>
-              </>
-            )}
-
-            {isUser && (
-              <Link
-                href="/user-dashboard"
-                className="text-slate-700 hover:text-polka-pink font-medium transition-colors text-sm flex items-center"
-              >
-                <User size={16} className="mr-1" /> My Dashboard
-              </Link>
-            )}
-
-            {isBusiness && (
-              <Link
-                href="/business-dashboard"
-                className="text-slate-700 hover:text-polka-pink font-medium transition-colors text-sm flex items-center"
-              >
-                <Briefcase size={16} className="mr-1" /> Business Dashboard
-              </Link>
-            )}
-
-            {isAuthenticated && (
-              <button
-                onClick={logout}
-                className="text-slate-700 hover:text-polka-pink font-medium transition-colors text-sm flex items-center"
-              >
-                <LogOut size={16} className="mr-1" /> Logout
-              </button>
-            )}
-
-            <ConnectWallet />
-          </div>
+          )}
         </div>
       </div>
     </nav>
   );
-};
+}
