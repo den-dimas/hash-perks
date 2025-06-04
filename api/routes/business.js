@@ -1,12 +1,14 @@
+// File: ./api/routes/business.js
 const express = require("express");
 const router = express.Router();
 const businessService = require("../services/businessService");
 const authService = require("../services/authService");
 const loyaltyService = require("../services/loyaltyService");
-const productService = require("../services/productService"); // NEW: Import productService
+const productService = require("../services/productService");
+const transactionService = require("../services/transactionService");
 const { authenticateBusiness } = require("../middleware/authMiddleware");
 
-// Register a new business and deploy its loyalty token contract
+// Business Registration Route
 router.post("/register", async (req, res) => {
   const { businessId, name, symbol, ownerAddress, password } = req.body;
 
@@ -14,32 +16,28 @@ router.post("/register", async (req, res) => {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
-  // Check if businessId already exists
-  if (authService.getBusinessById(businessId)) {
+  if (businessService.getBusinessDetails(businessId)) {
     return res.status(409).json({ error: "Business ID already exists." });
   }
 
   try {
-    // 1. Register business in auth service (for login)
-    authService.registerBusiness(businessId, password);
-
-    // 2. Deploy loyalty token contract and save its info
-    const contractInfo = await businessService.addBusinessContract(
+    const newBusiness = await businessService.registerBusinessAndDeployContract(
       businessId,
       name,
       symbol,
       ownerAddress,
+      password,
       loyaltyService.deployLoyaltyTokenViaFactory
     );
 
     res.status(201).json({
       message: "Business registered and loyalty contract deployed successfully.",
       business: {
-        id: businessId,
-        name: name,
-        symbol: symbol,
-        contractAddress: contractInfo.address,
-        ownerAddress: contractInfo.owner,
+        id: newBusiness.id,
+        name: newBusiness.name,
+        symbol: newBusiness.symbol,
+        contractAddress: newBusiness.address,
+        ownerAddress: newBusiness.ownerAddress,
       },
       success: true,
     });
@@ -49,8 +47,18 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// Get details of a specific business (requires authentication)
-router.get("/:businessId", authenticateBusiness, (req, res) => {
+// Public endpoint to get business details (no authentication required)
+router.get("/:businessId", (req, res) => {
+  const { businessId } = req.params;
+  const businessDetails = businessService.getBusinessDetails(businessId);
+  if (!businessDetails) {
+    return res.status(404).json({ error: "Business not found." });
+  }
+  res.json({ id: businessId, ...businessDetails });
+});
+
+// Authenticated endpoint to get business details (for business dashboard)
+router.get("/:businessId/details", authenticateBusiness, (req, res) => {
   const { businessId } = req.params;
   const callingBusiness = req.business;
 
@@ -58,7 +66,7 @@ router.get("/:businessId", authenticateBusiness, (req, res) => {
     return res.status(403).json({ error: "Forbidden", message: "You can only view your own business details." });
   }
 
-  const businessDetails = businessService.getBusinessContract(businessId);
+  const businessDetails = businessService.getBusinessDetails(businessId);
   if (!businessDetails) {
     return res.status(404).json({ error: "Business not found." });
   }
@@ -88,30 +96,10 @@ router.post("/:businessId/issue-points", authenticateBusiness, async (req, res) 
   }
 });
 
-// Redeem points (requires business authentication, or could be a user route)
-router.post("/:businessId/redeem-points", authenticateBusiness, async (req, res) => {
-  const { businessId } = req.params;
-  const { customerAddress, amount, privateKey } = req.body; // privateKey for simplified backend redemption
-  const callingBusiness = req.business;
+// REMOVED: Redeem points route from here. User redemption is now handled directly on frontend.
+// router.post("/:businessId/redeem-points", authenticateBusiness, async (req, res) => { ... });
 
-  if (callingBusiness.id !== businessId) {
-    return res.status(403).json({ error: "Forbidden", message: "You can only redeem points for your own business." });
-  }
-
-  if (!customerAddress || amount === undefined || !privateKey) {
-    return res.status(400).json({ error: "Missing required fields: customerAddress, amount, privateKey." });
-  }
-
-  try {
-    await loyaltyService.redeemPoints(businessId, customerAddress, amount, privateKey);
-    res.status(200).json({ message: "Points redeemed successfully.", success: true });
-  } catch (error) {
-    console.error("Error redeeming points:", error);
-    res.status(500).json({ success: false, error: error.message || "Failed to redeem points." });
-  }
-});
-
-// Get balance for a customer at a specific business
+// Get balance for a customer at a specific business (public endpoint)
 router.get("/:businessId/balance/:customerAddress", async (req, res) => {
   const { businessId, customerAddress } = req.params;
   try {
@@ -123,7 +111,7 @@ router.get("/:businessId/balance/:customerAddress", async (req, res) => {
   }
 });
 
-// NEW: Add a product to a business's catalog
+// Add a product to a business's catalog
 router.post("/:businessId/products", authenticateBusiness, (req, res) => {
   const { businessId } = req.params;
   const { name, priceRp, loyaltyPoints } = req.body;
@@ -154,7 +142,7 @@ router.post("/:businessId/products", authenticateBusiness, (req, res) => {
   }
 });
 
-// NEW: Get all products for a specific business
+// Get all products for a specific business (public endpoint)
 router.get("/:businessId/products", (req, res) => {
   const { businessId } = req.params;
   try {
@@ -163,6 +151,35 @@ router.get("/:businessId/products", (req, res) => {
   } catch (error) {
     console.error("Error fetching products:", error);
     res.status(500).json({ success: false, error: error.message || "Failed to fetch products." });
+  }
+});
+
+// Get business's transaction history (requires business authentication)
+router.get("/:businessId/transactions", authenticateBusiness, (req, res) => {
+  const { businessId } = req.params;
+  const callingBusiness = req.business;
+
+  if (callingBusiness.id !== businessId) {
+    return res.status(403).json({ error: "Forbidden", message: "You can only view your own business transactions." });
+  }
+
+  try {
+    const businessTransactions = transactionService.getTransactionsByBusinessId(businessId);
+    res.status(200).json({ transactions: businessTransactions, success: true });
+  } catch (error) {
+    console.error("Error fetching business transactions:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to fetch business transactions." });
+  }
+});
+
+// Get all businesses (public endpoint)
+router.get("/", (req, res) => {
+  try {
+    const allBusinesses = businessService.getAllBusinesses();
+    res.status(200).json(allBusinesses);
+  } catch (error) {
+    console.error("Error fetching all businesses:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to fetch all businesses." });
   }
 });
 

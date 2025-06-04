@@ -1,14 +1,15 @@
 {
   "den": {
     "id": "den",
-    "password": "$2b$10$Yzc3oUYzeiSDeQvH7YoIHuoMY1j56KZAkiMMB0iIO.I8yITNN/nwe",
+    "password": "$2b$10$qH2t0tEhtoHzuLWeAL0DZeRCOKurujagU9Wsw/jS7mAMV/RO695dS",
     "role": "user",
-    "dummyBalanceRp": 950000,
+    "dummyBalanceRp": 900000,
     "subscriptions": {
       "lantis": {
         "walletAddress": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
-        "subscribedAt": "2025-06-04T08:08:53.922Z"
+        "subscribedAt": "2025-06-04T11:15:29.675Z"
       }
-    }
+    },
+    "walletAddress": "0x90f79bf6eb2c4f870365e785982e1f101e93b906"
   }
 }

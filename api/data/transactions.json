@@ -1,0 +1,62 @@
+[
+  {
+    "id": "430e8a84-4f46-43d2-b033-468e4328d354",
+    "type": "issue",
+    "businessId": "lantis",
+    "userId": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+    "customerWalletAddress": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+    "amount": 5000,
+    "loyaltyTokenSymbol": "LTS",
+    "productId": null,
+    "productName": null,
+    "timestamp": "2025-06-04T11:16:00.920Z"
+  },
+  {
+    "id": "debe95c3-5f03-4ff8-8b22-6c525874aad5",
+    "type": "purchase",
+    "businessId": "lantis",
+    "userId": "den",
+    "customerWalletAddress": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+    "amount": 50000,
+    "loyaltyTokenSymbol": "LTS",
+    "productId": "3ad9a765-7447-40e7-9544-9afd0a958333",
+    "productName": "Baju",
+    "timestamp": "2025-06-04T11:16:00.921Z"
+  },
+  {
+    "id": "fcb511aa-b786-4415-b5f9-ab119c87296e",
+    "type": "issue",
+    "businessId": "lantis",
+    "userId": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+    "customerWalletAddress": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+    "amount": 5000,
+    "loyaltyTokenSymbol": "LTS",
+    "productId": null,
+    "productName": null,
+    "timestamp": "2025-06-04T11:16:05.975Z"
+  },
+  {
+    "id": "4979613a-0535-4632-8fc9-f282e61d6a81",
+    "type": "purchase",
+    "businessId": "lantis",
+    "userId": "den",
+    "customerWalletAddress": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+    "amount": 50000,
+    "loyaltyTokenSymbol": "LTS",
+    "productId": "3ad9a765-7447-40e7-9544-9afd0a958333",
+    "productName": "Baju",
+    "timestamp": "2025-06-04T11:16:05.976Z"
+  },
+  {
+    "id": "1b236fa7-eaf3-4667-9c5c-e838ebc02564",
+    "type": "redeem",
+    "businessId": "lantis",
+    "userId": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+    "customerWalletAddress": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+    "amount": 2500,
+    "loyaltyTokenSymbol": "LTS",
+    "productId": null,
+    "productName": null,
+    "timestamp": "2025-06-04T11:16:28.731Z"
+  }
+]

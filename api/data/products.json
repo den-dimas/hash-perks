@@ -1,18 +1,11 @@
 {
   "lantis": [
     {
-      "id": "2efa947c-d6e9-47b5-bb67-6a50a2f109da",
-      "name": "Baju Bekas",
+      "id": "3ad9a765-7447-40e7-9544-9afd0a958333",
+      "name": "Baju",
       "priceRp": 50000,
-      "loyaltyPoints": 500,
-      "createdAt": "2025-06-04T07:34:54.777Z"
-    },
-    {
-      "id": "f9edf4bf-155f-4d65-803a-abe86dce9102",
-      "name": "Celana Baru",
-      "priceRp": 500000,
       "loyaltyPoints": 5000,
-      "createdAt": "2025-06-04T08:08:38.450Z"
+      "createdAt": "2025-06-04T11:14:56.425Z"
     }
   ]
 }

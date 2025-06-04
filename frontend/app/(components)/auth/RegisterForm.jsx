@@ -1,36 +1,31 @@
+// File: ./frontend/app/(components)/auth/RegisterForm.jsx
 "use client";
 
 import { useState, useEffect } from "react";
 import { useWeb3 } from "@/contexts/Web3Context";
-// REMOVED: import { useAccount } from "wagmi"; // No longer directly used here
 import { Loader2, CheckCircle, XCircle, Wallet } from "lucide-react";
-import { ethers } from "ethers"; // For address validation
+import { ethers } from "ethers";
 
-// RegisterForm component now accepts specific handlers for user and business registration
 export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
-  // State for form fields
-  const [userId, setUserId] = useState(""); // For user registration
-  const [businessId, setBusinessId] = useState(""); // For business registration
-  const [businessName, setBusinessName] = useState(""); // For business registration
-  const [businessSymbol, setBusinessSymbol] = useState(""); // For business registration
+  const [userId, setUserId] = useState("");
+  const [businessId, setBusinessId] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [businessSymbol, setBusinessSymbol] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [walletAddress, setWalletAddress] = useState(""); // For both user and business owner address
+  const [walletAddress, setWalletAddress] = useState("");
 
-  const [message, setMessage] = useState(null); // For success/error messages
-  const [formError, setFormError] = useState(null); // For form validation errors
+  const [message, setMessage] = useState(null);
+  const [formError, setFormError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Use the account from Web3Context directly
   const { connectWallet, account, isLoading: isWeb3Loading } = useWeb3();
 
-  // State to track if the component has fully mounted on the client
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Sync walletAddress state with connected account from Web3Context
   useEffect(() => {
     if (mounted && account) {
       setWalletAddress(account);
@@ -43,7 +38,6 @@ export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
     setFormError(null);
     setIsLoading(true);
 
-    // Basic form validation
     if (!password || !confirmPassword) {
       setFormError("Password and Confirm Password are required.");
       setIsLoading(false);
@@ -68,22 +62,18 @@ export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
           setIsLoading(false);
           return;
         }
-        // Call the passed-in user registration handler
         result = await onUserRegister(userId, password, walletAddress);
       } else {
-        // type === 'business'
         if (!businessId || !businessName || !businessSymbol) {
           setFormError("Business ID, Name, and Symbol are required.");
           setIsLoading(false);
           return;
         }
-        // Call the passed-in business registration handler
         result = await onBusinessRegister(businessId, businessName, businessSymbol, walletAddress, password);
       }
 
       if (result && result.success) {
         setMessage({ type: "success", text: result.message || "Registration successful!" });
-        // Clear form fields on success
         setUserId("");
         setBusinessId("");
         setBusinessName("");
@@ -105,18 +95,14 @@ export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {message && (
-        <div
-          className={`p-4 rounded-md flex items-center ${
-            message.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-          }`}
-        >
+        <div className={message.type === "success" ? "message-box-success" : "message-box-error"}>
           {message.type === "success" ? <CheckCircle className="h-5 w-5 mr-2" /> : <XCircle className="h-5 w-5 mr-2" />}
           {message.text}
         </div>
       )}
 
       {formError && (
-        <div className="p-4 rounded-md bg-red-100 text-red-800 flex items-center">
+        <div className="message-box-error">
           <XCircle className="h-5 w-5 mr-2" />
           {formError}
         </div>
@@ -124,7 +110,7 @@ export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
 
       {type === "user" ? (
         <div>
-          <label htmlFor="userId" className="block text-sm font-medium text-slate-700 mb-1">
+          <label htmlFor="userId" className="block text-sm font-medium text-light-text-primary mb-1">
             User ID:
           </label>
           <input
@@ -139,10 +125,9 @@ export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
           />
         </div>
       ) : (
-        // Business registration fields
         <>
           <div>
-            <label htmlFor="businessId" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="businessId" className="block text-sm font-medium text-light-text-primary mb-1">
               Business ID:
             </label>
             <input
@@ -157,7 +142,7 @@ export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
             />
           </div>
           <div>
-            <label htmlFor="businessName" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="businessName" className="block text-sm font-medium text-light-text-primary mb-1">
               Business Name:
             </label>
             <input
@@ -172,7 +157,7 @@ export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
             />
           </div>
           <div>
-            <label htmlFor="businessSymbol" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="businessSymbol" className="block text-sm font-medium text-light-text-primary mb-1">
               Loyalty Token Symbol:
             </label>
             <input
@@ -191,7 +176,7 @@ export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
       )}
 
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
+        <label htmlFor="password" className="block text-sm font-medium text-light-text-primary mb-1">
           Password:
         </label>
         <input
@@ -205,7 +190,7 @@ export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
         />
       </div>
       <div>
-        <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-1">
+        <label htmlFor="confirmPassword" className="block text-sm font-medium text-light-text-primary mb-1">
           Confirm Password:
         </label>
         <input
@@ -220,7 +205,7 @@ export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
       </div>
 
       <div>
-        <label htmlFor="walletAddress" className="block text-sm font-medium text-slate-700 mb-1">
+        <label htmlFor="walletAddress" className="block text-sm font-medium text-light-text-primary mb-1">
           Your Wallet Address (Owner/Customer):
         </label>
         <div className="flex items-center space-x-2">
@@ -232,32 +217,31 @@ export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
             onChange={(e) => setWalletAddress(e.target.value)}
             placeholder="0x..."
             required
-            disabled={isLoading || isWeb3Loading || account} // Disable if already connected
+            disabled={isLoading || isWeb3Loading || account}
           />
-          {mounted &&
-            !account && ( // Only show connect button if not connected and mounted
-              <button
-                type="button"
-                onClick={connectWallet}
-                className="btn-secondary-light flex-shrink-0"
-                disabled={isWeb3Loading || isLoading}
-              >
-                {isWeb3Loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wallet className="h-5 w-5" />}
-                <span className="ml-2 hidden sm:inline">Connect Wallet</span>
-              </button>
-            )}
+          {mounted && !account && (
+            <button
+              type="button"
+              onClick={connectWallet}
+              className="btn-secondary flex-shrink-0 px-4 py-2 text-sm"
+              disabled={isWeb3Loading || isLoading}
+            >
+              {isWeb3Loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wallet className="h-5 w-5" />}
+              <span className="ml-2 hidden sm:inline">Connect Wallet</span>
+            </button>
+          )}
           {mounted && account && (
-            <span className="text-green-600 flex items-center text-sm">
+            <span className="text-status-success flex items-center text-sm">
               <CheckCircle className="h-4 w-4 mr-1" /> Connected
             </span>
           )}
         </div>
         {mounted && !account && (
-          <p className="text-sm text-slate-500 mt-1">Connect your wallet to auto-fill your address.</p>
+          <p className="text-sm text-light-text-secondary mt-1">Connect your wallet to auto-fill your address.</p>
         )}
       </div>
 
-      <button type="submit" className="btn-primary-dark w-full" disabled={isLoading || isWeb3Loading}>
+      <button type="submit" className="btn-primary w-full" disabled={isLoading || isWeb3Loading}>
         {isLoading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
         {type === "user" ? "Register as User" : "Register Business"}
       </button>

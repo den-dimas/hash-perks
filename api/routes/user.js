@@ -1,8 +1,11 @@
+// File: ./api/routes/user.js
 const express = require("express");
 const router = express.Router();
 const authService = require("../services/authService");
-const loyaltyService = require("../services/loyaltyService"); // Import loyaltyService for point issuance
-const productService = require("../services/productService"); // Import productService to get product details
+const loyaltyService = require("../services/loyaltyService");
+const productService = require("../services/productService");
+const transactionService = require("../services/transactionService");
+const businessService = require("../services/businessService");
 const { authenticateUser } = require("../middleware/authMiddleware");
 
 // Get user subscriptions (requires user authentication)
@@ -49,7 +52,7 @@ router.post("/:userId/subscribe", authenticateUser, async (req, res) => {
   }
 });
 
-// NEW: Add dummy balance to a user's account
+// Add dummy balance to a user's account
 router.post("/:userId/add-balance", authenticateUser, (req, res) => {
   const { userId } = req.params;
   const { amount } = req.body;
@@ -73,7 +76,7 @@ router.post("/:userId/add-balance", authenticateUser, (req, res) => {
   }
 });
 
-// NEW: Get user's current dummy balance
+// Get user's current dummy balance
 router.get("/:userId/balance-rp", authenticateUser, (req, res) => {
   const { userId } = req.params;
   const callingUser = req.user;
@@ -94,7 +97,7 @@ router.get("/:userId/balance-rp", authenticateUser, (req, res) => {
   }
 });
 
-// NEW: Buy a product (deducts dummy balance, issues loyalty points)
+// Buy a product (deducts dummy balance, issues loyalty points)
 router.post("/:userId/buy-product", authenticateUser, async (req, res) => {
   const { userId } = req.params;
   const { businessId, productId } = req.body;
@@ -106,6 +109,10 @@ router.post("/:userId/buy-product", authenticateUser, async (req, res) => {
   if (!businessId || !productId) {
     return res.status(400).json({ error: "Missing required fields: businessId, productId." });
   }
+
+  console.log(
+    `UserRoutes: Buy product request for User ID: ${userId}, Business ID: ${businessId}, Product ID: ${productId}`
+  );
 
   try {
     const user = authService.getUserById(userId);
@@ -120,10 +127,20 @@ router.post("/:userId/buy-product", authenticateUser, async (req, res) => {
     }
 
     // 2. Check if user is subscribed to the business
-    const userSubscription = authService.getUserSubscriptions(userId)[businessId];
-    if (!userSubscription) {
-      return res.status(400).json({ error: "User is not subscribed to this business's loyalty program." });
+    const userSubscription = user.subscriptions[businessId];
+    if (!userSubscription || !userSubscription.walletAddress) {
+      console.error(
+        `UserRoutes: User ${userId} is not subscribed to business ${businessId} or missing wallet address in subscription.`
+      );
+      return res
+        .status(400)
+        .json({
+          error: "User is not subscribed to this business's loyalty program or subscription details are incomplete.",
+        });
     }
+    console.log(
+      `UserRoutes: User ${userId} subscription found for ${businessId}. Wallet: ${userSubscription.walletAddress}`
+    );
 
     // 3. Check dummy balance
     if (user.dummyBalanceRp < product.priceRp) {
@@ -138,7 +155,23 @@ router.post("/:userId/buy-product", authenticateUser, async (req, res) => {
     const updatedBalance = authService.deductDummyBalance(userId, product.priceRp);
 
     // 5. Issue loyalty points to the user's subscribed wallet
+    console.log(
+      `UserRoutes: Calling loyaltyService.issuePoints for businessId: ${businessId}, customerWalletAddress: ${userSubscription.walletAddress}, points: ${product.loyaltyPoints}`
+    );
     await loyaltyService.issuePoints(businessId, userSubscription.walletAddress, product.loyaltyPoints);
+
+    // Record the purchase transaction
+    const businessDetails = businessService.getBusinessDetails(businessId);
+    transactionService.addTransaction(
+      "purchase",
+      businessId,
+      userId,
+      userSubscription.walletAddress,
+      product.priceRp,
+      businessDetails.symbol,
+      productId,
+      product.name
+    );
 
     res.status(200).json({
       message: `Successfully purchased "${product.name}" from ${businessId}. Rp${product.priceRp} deducted. ${product.loyaltyPoints} loyalty points issued.`,
@@ -147,8 +180,50 @@ router.post("/:userId/buy-product", authenticateUser, async (req, res) => {
       success: true,
     });
   } catch (error) {
-    console.error("Error buying product:", error);
+    console.error("UserRoutes: Error buying product:", error);
     res.status(500).json({ success: false, error: error.message || "Failed to buy product." });
+  }
+});
+
+// NEW: Route to record a user's redemption (called by frontend after blockchain tx)
+router.post("/:userId/record-redemption", authenticateUser, async (req, res) => {
+  const { userId } = req.params;
+  const { businessId, customerAddress, amount, loyaltyTokenSymbol } = req.body;
+  const callingUser = req.user;
+
+  if (callingUser.id !== userId) {
+    return res
+      .status(403)
+      .json({ error: "Forbidden", message: "You can only record redemptions for your own account." });
+  }
+  if (!businessId || !customerAddress || amount === undefined || !loyaltyTokenSymbol) {
+    return res.status(400).json({ error: "Missing required fields for redemption record." });
+  }
+
+  try {
+    await loyaltyService.recordRedemption(businessId, customerAddress, amount, loyaltyTokenSymbol);
+    res.status(200).json({ message: "Redemption recorded successfully.", success: true });
+  } catch (error) {
+    console.error("Error recording redemption:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to record redemption." });
+  }
+});
+
+// Get user's transaction history
+router.get("/:userId/transactions", authenticateUser, (req, res) => {
+  const { userId } = req.params;
+  const callingUser = req.user;
+
+  if (callingUser.id !== userId) {
+    return res.status(403).json({ error: "Forbidden", message: "You can only view your own transactions." });
+  }
+
+  try {
+    const userTransactions = transactionService.getTransactionsByUserId(userId);
+    res.status(200).json({ transactions: userTransactions, success: true });
+  } catch (error) {
+    console.error("Error fetching user transactions:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to fetch user transactions." });
   }
 });
 

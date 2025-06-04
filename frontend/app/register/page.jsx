@@ -1,22 +1,21 @@
+// File: ./frontend/app/register/page.jsx
 "use client";
 
 import { useState } from "react";
 import { RegisterForm } from "@/app/(components)/auth/RegisterForm";
-import { registerUser, registerBusiness } from "@/services/api"; // Import API functions
+import { registerUser, registerBusiness } from "@/services/api";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { User, Briefcase } from "lucide-react";
 
 export default function RegisterPage() {
-  const [registrationType, setRegistrationType] = useState("user"); // 'user' or 'business'
-  const [message, setMessage] = useState(null); // For overall page messages
+  const [registrationType, setRegistrationType] = useState("user");
+  const [message, setMessage] = useState(null);
   const router = useRouter();
 
-  // Handler for user registration
   const handleUserRegister = async (userId, password, userWalletAddress) => {
-    // userWalletAddress is received here
     setMessage(null);
     try {
-      // MODIFIED: Pass userWalletAddress to registerUser API call
       const response = await registerUser(userId, password, userWalletAddress);
       if (response.success) {
         setMessage({ type: "success", text: "User registration successful! Please log in." });
@@ -31,7 +30,6 @@ export default function RegisterPage() {
     }
   };
 
-  // Handler for business registration
   const handleBusinessRegister = async (businessId, name, symbol, ownerAddress, password) => {
     setMessage(null);
     try {
@@ -50,28 +48,21 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-6 bg-white rounded-xl shadow-lg">
-      <h1 className="text-3xl font-bold text-slate-800 mb-6 text-center">Register for HashPerks</h1>
+    <div className="max-w-2xl mx-auto p-6 bg-light-bg-secondary rounded-2xl shadow-medium-shadow border border-gray-200">
+      <h1 className="text-3xl font-bold text-light-text-primary mb-6 text-center">Register for HashPerks</h1>
 
       {message && (
-        <div
-          className={`p-4 mb-4 rounded-md flex items-center ${
-            message.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-          }`}
-        >
-          {message.text}
-        </div>
+        <div className={message.type === "success" ? "message-box-success" : "message-box-error"}>{message.text}</div>
       )}
 
-      {/* Type selection tabs */}
       <div className="flex justify-center mb-8">
         <button
           type="button"
           onClick={() => setRegistrationType("user")}
-          className={`px-6 py-3 rounded-l-lg font-medium transition-colors duration-200 flex items-center ${
+          className={`px-6 py-3 rounded-l-xl font-medium transition-colors duration-200 flex items-center ${
             registrationType === "user"
-              ? "bg-polka-pink text-white shadow-md"
-              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              ? "bg-accent-green text-white shadow-md"
+              : "bg-light-bg-primary text-light-text-secondary hover:bg-gray-100"
           }`}
         >
           <User className="h-5 w-5 mr-2" /> Register as User
@@ -79,22 +70,28 @@ export default function RegisterPage() {
         <button
           type="button"
           onClick={() => setRegistrationType("business")}
-          className={`px-6 py-3 rounded-r-lg font-medium transition-colors duration-200 flex items-center ${
+          className={`px-6 py-3 rounded-r-xl font-medium transition-colors duration-200 flex items-center ${
             registrationType === "business"
-              ? "bg-polka-pink text-white shadow-md"
-              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              ? "bg-accent-green text-white shadow-md"
+              : "bg-light-bg-primary text-light-text-secondary hover:bg-gray-100"
           }`}
         >
           <Briefcase className="h-5 w-5 mr-2" /> Register as Business
         </button>
       </div>
 
-      {/* Render the RegisterForm with appropriate props based on type */}
       <RegisterForm
         type={registrationType}
         onUserRegister={handleUserRegister}
         onBusinessRegister={handleBusinessRegister}
       />
+
+      <p className="text-center text-light-text-secondary mt-6">
+        Already have an account?{" "}
+        <Link href="/login" className="text-accent-blue-light hover:underline font-medium">
+          Login here
+        </Link>
+      </p>
     </div>
   );
 }

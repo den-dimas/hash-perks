@@ -1,17 +1,15 @@
+// File: ./frontend/app/(components)/auth/LoginForm.jsx
 "use client";
 
 import { useState } from "react";
-import { Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Loader2, LogIn, XCircle, CheckCircle } from "lucide-react";
 
-// LoginForm component now accepts specific handlers for user and business login
-export function LoginForm({ type, onUserLogin, onBusinessLogin }) {
-  // State for form fields
-  const [identifier, setIdentifier] = useState(""); // Will be userId or businessId
+export function LoginForm({ type, onLogin }) {
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-
-  const [message, setMessage] = useState(null); // For success/error messages within the form
-  const [formError, setFormError] = useState(null); // For form validation errors
   const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [formError, setFormError] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -19,29 +17,20 @@ export function LoginForm({ type, onUserLogin, onBusinessLogin }) {
     setFormError(null);
     setIsLoading(true);
 
-    // Basic form validation
     if (!identifier || !password) {
       setFormError("All fields are required.");
       setIsLoading(false);
       return;
     }
 
-    let result;
     try {
-      if (type === "user") {
-        // Call the passed-in user login handler
-        result = await onUserLogin(identifier, password);
-      } else {
-        // type === 'business'
-        // Call the passed-in business login handler
-        result = await onBusinessLogin(identifier, password);
-      }
-
+      const result = await onLogin(identifier, password, type);
       if (result && result.success) {
         setMessage({ type: "success", text: result.message || "Login successful!" });
-        // Fields are not cleared on success, as a redirect will happen
+        setIdentifier("");
+        setPassword("");
       } else {
-        setMessage({ type: "error", text: result.message || "Login failed. Please check your credentials." });
+        setMessage({ type: "error", text: result.message || "Login failed." });
       }
     } catch (err) {
       console.error("Login submission error:", err);
@@ -54,26 +43,22 @@ export function LoginForm({ type, onUserLogin, onBusinessLogin }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {message && (
-        <div
-          className={`p-4 rounded-md flex items-center ${
-            message.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-          }`}
-        >
+        <div className={message.type === "success" ? "message-box-success" : "message-box-error"}>
           {message.type === "success" ? <CheckCircle className="h-5 w-5 mr-2" /> : <XCircle className="h-5 w-5 mr-2" />}
           {message.text}
         </div>
       )}
 
       {formError && (
-        <div className="p-4 rounded-md bg-red-100 text-red-800 flex items-center">
+        <div className="message-box-error">
           <XCircle className="h-5 w-5 mr-2" />
           {formError}
         </div>
       )}
 
       <div>
-        <label htmlFor="identifier" className="block text-sm font-medium text-slate-700 mb-1">
-          {type === "user" ? "User ID:" : "Business ID:"}
+        <label htmlFor="identifier" className="block text-sm font-medium text-light-text-primary mb-1">
+          {type === "user" ? "User ID" : "Business ID"}:
         </label>
         <input
           type="text"
@@ -81,14 +66,13 @@ export function LoginForm({ type, onUserLogin, onBusinessLogin }) {
           className="input-field-modern"
           value={identifier}
           onChange={(e) => setIdentifier(e.target.value)}
-          placeholder={type === "user" ? "Your user ID" : "Your business ID"}
+          placeholder={type === "user" ? "Your User ID" : "Your Business ID"}
           required
           disabled={isLoading}
         />
       </div>
-
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
+        <label htmlFor="password" className="block text-sm font-medium text-light-text-primary mb-1">
           Password:
         </label>
         <input
@@ -101,10 +85,9 @@ export function LoginForm({ type, onUserLogin, onBusinessLogin }) {
           disabled={isLoading}
         />
       </div>
-
-      <button type="submit" className="btn-primary-dark w-full" disabled={isLoading}>
-        {isLoading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
-        {type === "user" ? "Login as User" : "Login as Business"}
+      <button type="submit" className="btn-primary w-full" disabled={isLoading}>
+        {isLoading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <LogIn className="h-5 w-5 mr-2" />}
+        {isLoading ? "Logging In..." : "Login"}
       </button>
     </form>
   );

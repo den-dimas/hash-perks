@@ -1,15 +1,15 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation"; // Import useParams
+import { useParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWeb3 } from "@/contexts/Web3Context";
-// MODIFIED: Corrected import name from getCustomerBalance to getBalance
 import {
   getBusinessContractInfo,
   issuePoints,
   getBalance,
   addProductToCatalog,
   getProductsByBusiness,
+  getBusinessTransactions,
 } from "@/services/api";
 import {
   Loader2,
@@ -22,13 +22,14 @@ import {
   ExternalLink,
   PlusCircle,
   ShoppingBag,
+  History,
 } from "lucide-react";
 import Link from "next/link";
 import { ethers } from "ethers";
 
 export default function BusinessDashboard() {
-  const params = useParams(); // Get params from Next.js
-  const businessIdFromUrl = params.businessId; // Extract businessId from URL
+  const params = useParams();
+  const businessIdFromUrl = params.businessId;
   const { business, isAuthenticated, isBusiness, loading: authLoading, currentUser } = useAuth();
   const { account, provider, signer } = useWeb3();
 
@@ -36,7 +37,7 @@ export default function BusinessDashboard() {
   const [customerAddress, setCustomerAddress] = useState("");
   const [issueAmount, setIssueAmount] = useState("");
   const [customerBalance, setCustomerBalance] = useState(null);
-  const [isLoading, setIsLoading] = useState(true); // Overall loading for the page
+  const [isLoading, setIsLoading] = useState(true);
   const [isIssuing, setIsIssuing] = useState(false);
   const [isFetchingBalance, setIsFetchingBalance] = useState(false);
   const [message, setMessage] = useState(null);
@@ -49,28 +50,38 @@ export default function BusinessDashboard() {
   const [newProductLoyaltyPoints, setNewProductLoyaltyPoints] = useState("");
   const [isAddingProduct, setIsAddingProduct] = useState(false);
 
-  // Determine the business ID to use: from URL or from auth context
-  const currentBusinessId = business?.id || businessIdFromUrl;
+  // Transaction History State
+  const [transactions, setTransactions] = useState([]);
+
+  const currentBusinessId = businessIdFromUrl;
 
   useEffect(() => {
+    // NEW LOGS: Check values at the start of the effect
+    console.log("BusinessDashboard useEffect: authLoading", authLoading);
+    console.log("BusinessDashboard useEffect: isAuthenticated", isAuthenticated);
+    console.log("BusinessDashboard useEffect: isBusiness", isBusiness);
+    console.log("BusinessDashboard useEffect: business?.id", business?.id);
+    console.log("BusinessDashboard useEffect: currentUser?.token", currentUser?.token);
+    console.log("BusinessDashboard useEffect: businessIdFromUrl", businessIdFromUrl);
+
     if (authLoading) {
       setIsLoading(true);
       return;
     }
 
-    // CRITICAL CHECK: Ensure it's a BUSINESS and authenticated AND the business ID matches
-    // the one from the URL or the authenticated business ID.
-    if (!isAuthenticated || !isBusiness || (business?.id !== businessIdFromUrl && businessIdFromUrl !== "all")) {
+    // CRITICAL ACCESS CHECK: This page is ONLY for the specific business owner.
+    // If not authenticated as a business, or if the logged-in business ID does not match the URL, deny access.
+    if (!isAuthenticated || !isBusiness || business?.id !== currentBusinessId) {
       setMessage({
         type: "error",
-        text: "Access Denied: You must be logged in as the correct business to view this page.",
+        text: `Access Denied: You must be logged in as business "${currentBusinessId}" to view this page.`,
       });
       setIsLoading(false);
       return;
     }
 
     const fetchBusinessData = async () => {
-      setIsLoading(true);
+      setIsLoading(true); // Start loading for data fetch
       setError(null);
       setMessage(null);
       try {
@@ -81,8 +92,12 @@ export default function BusinessDashboard() {
           // Fetch product catalog for this business
           const productData = await getProductsByBusiness(currentBusinessId);
           setProducts(productData.products);
+
+          // Fetch business's transaction history
+          const transactionHistory = await getBusinessTransactions(currentBusinessId, currentUser.token);
+          setTransactions(transactionHistory.transactions);
         } else {
-          setError("Business ID or authentication token not found in authentication context or URL.");
+          setError("Business ID or authentication token not found in authentication context.");
           setBusinessContract(null);
         }
       } catch (err) {
@@ -94,10 +109,11 @@ export default function BusinessDashboard() {
       }
     };
 
+    // Fetch data only if the currentBusinessId and token are confirmed to exist
     if (currentBusinessId && currentUser?.token) {
       fetchBusinessData();
     }
-  }, [currentBusinessId, isAuthenticated, isBusiness, authLoading, currentUser, business, businessIdFromUrl]); // Added businessIdFromUrl to dependencies
+  }, [currentBusinessId, isAuthenticated, isBusiness, authLoading, currentUser, business]);
 
   const handleIssuePoints = async (e) => {
     e.preventDefault();
@@ -124,6 +140,10 @@ export default function BusinessDashboard() {
       setMessage({ type: "success", text: `Successfully issued ${amount} points to ${customerAddress}!` });
       setIssueAmount("");
 
+      // Refresh transactions after issuing points
+      const updatedTransactions = await getBusinessTransactions(currentBusinessId, currentUser.token);
+      setTransactions(updatedTransactions.transactions);
+
       await handleGetBalance();
     } catch (err) {
       console.error("Error issuing points:", err);
@@ -149,7 +169,6 @@ export default function BusinessDashboard() {
       if (!ethers.isAddress(customerAddress)) {
         throw new Error("Invalid customer wallet address format.");
       }
-      // Using the correctly imported getBalance function
       const balance = await getBalance(currentBusinessId, customerAddress);
       setCustomerBalance(balance);
       setMessage({ type: "success", text: `Balance for ${customerAddress}: ${balance} points.` });
@@ -214,15 +233,13 @@ export default function BusinessDashboard() {
     );
   }
 
-  // Adjusted access check to ensure the business ID from the URL matches the logged-in business ID
-  // This prevents a logged-in 'businessA' from seeing 'businessB's dashboard.
-  if (!isAuthenticated || !isBusiness || business?.id !== businessIdFromUrl) {
+  if (!isAuthenticated || !isBusiness || business?.id !== currentBusinessId) {
     return (
       <div className="text-center py-20">
         <XCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
         <h2 className="text-2xl font-bold text-slate-800 mb-4">Access Denied</h2>
         <p className="text-slate-600 mb-6">
-          You must be logged in as business "{businessIdFromUrl}" to view this page.
+          You must be logged in as business "{currentBusinessId}" to view this page.
         </p>
         <Link href="/login" className="btn-primary-dark">
           Login as Business
@@ -450,7 +467,7 @@ export default function BusinessDashboard() {
       </div>
 
       {/* Existing Check Customer Balance Section */}
-      <div>
+      <div className="mb-8">
         <h2 className="text-2xl font-bold text-slate-800 mb-4">Check Customer Balance</h2>
         <div className="flex space-x-2">
           <input
@@ -473,6 +490,44 @@ export default function BusinessDashboard() {
           <p className="mt-4 text-lg font-semibold text-slate-800">
             Current Balance: {customerBalance} {businessContract.symbol}
           </p>
+        )}
+      </div>
+
+      {/* Transaction History Section */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-slate-800 mb-4 flex items-center">
+          <History className="h-6 w-6 mr-2 text-polka-pink" /> Business Transaction History
+        </h2>
+        {transactions.length === 0 ? (
+          <p className="text-slate-600">No transactions recorded yet for this business.</p>
+        ) : (
+          <div className="space-y-4">
+            {transactions
+              .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+              .map((txn) => (
+                <div key={txn.id} className="p-4 border border-slate-200 rounded-lg bg-slate-50">
+                  <p className="text-sm text-slate-500">{new Date(txn.timestamp).toLocaleString()}</p>
+                  <p className="text-md font-semibold text-slate-800">
+                    {txn.type === "issue" && (
+                      <span className="text-green-600">
+                        Issued {txn.amount} {txn.loyaltyTokenSymbol} points
+                      </span>
+                    )}
+                    {txn.type === "redeem" && (
+                      <span className="text-red-600">
+                        Redeemed {txn.amount} {txn.loyaltyTokenSymbol} points
+                      </span>
+                    )}
+                    {txn.type === "purchase" && (
+                      <span className="text-blue-600">
+                        Customer "{txn.userId}" purchased "{txn.productName}" for Rp{txn.amount.toLocaleString()}
+                      </span>
+                    )}{" "}
+                    to <span className="font-bold">{txn.customerWalletAddress}</span>
+                  </p>
+                </div>
+              ))}
+          </div>
         )}
       </div>
     </div>

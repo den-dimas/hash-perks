@@ -14,7 +14,7 @@ export const AuthProvider = ({ children }) => {
 
   // Function to load current user data from localStorage and set state
   const loadAuthState = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); // Start loading
     const storedUser = localStorage.getItem("currentUser");
     if (storedUser) {
       try {
@@ -61,29 +61,33 @@ export const AuthProvider = ({ children }) => {
 
   // Login function
   const login = async (id, password, role) => {
-    setLoading(true);
+    setLoading(true); // Ensure loading is true during login attempt
     try {
       let result;
       let newCurrentUser = null;
 
       if (role === "user") {
         result = await loginUser(id, password);
-        if (result.success) {
+        if (result.success && result.user) {
+          // Ensure result.user exists
           newCurrentUser = {
             id: result.user.id,
             role: result.user.role,
-            token: result.user.id, // Placeholder token
-            dummyBalanceRp: result.user.dummyBalanceRp || 0, // Ensure dummyBalanceRp is set
-            subscriptions: result.user.subscriptions || {}, // Ensure subscriptions are set
+            token: result.user.id, // Placeholder token (using ID as token)
+            dummyBalanceRp: result.user.dummyBalanceRp || 0,
+            subscriptions: result.user.subscriptions || {},
+            walletAddress: result.user.walletAddress,
           };
         }
       } else if (role === "business") {
         result = await loginBusiness(id, password);
-        if (result.success) {
+        console.log("AuthContext: loginBusiness API call raw result:", result); // NEW LOG: Raw result
+        if (result.success && result.business) {
+          // Ensure result.business exists
           newCurrentUser = {
             id: result.business.id,
             role: result.business.role,
-            token: result.business.id, // Placeholder token
+            token: result.business.id, // Token is the business ID
           };
         }
       } else {
@@ -103,16 +107,18 @@ export const AuthProvider = ({ children }) => {
       console.error("AuthContext: Login error:", error);
       return { success: false, message: error.message || "An unexpected error occurred during login." };
     } finally {
-      setLoading(false);
+      setLoading(false); // End loading after login attempt
     }
   };
 
   // Logout function
   const logout = useCallback(() => {
+    setLoading(true); // Set loading to true during logout
     setCurrentUser(null);
     localStorage.removeItem("currentUser");
     router.push("/login");
     console.log("AuthContext: User logged out.");
+    setLoading(false); // End loading after logout
   }, [router]);
 
   // Signup function (already present, ensuring it uses new login)
@@ -121,7 +127,7 @@ export const AuthProvider = ({ children }) => {
     try {
       let result;
       if (role === "user") {
-        result = await registerUser(id, password);
+        result = await registerUser(id, password, ownerAddress);
       } else if (role === "business") {
         result = await registerBusiness(id, name, symbol, ownerAddress, password);
       } else {
@@ -129,8 +135,9 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (result.success) {
-        // After successful signup, automatically log them in
         console.log("AuthContext: Signup successful, attempting auto-login.");
+        // After successful signup, automatically log them in
+        // This will trigger the login function which also sets loading to false
         return await login(id, password, role);
       } else {
         console.log("AuthContext: Signup failed, result:", result);
@@ -140,7 +147,7 @@ export const AuthProvider = ({ children }) => {
       console.error("AuthContext: Signup error:", error);
       return { success: false, message: error.message || "An unexpected error occurred during signup." };
     } finally {
-      setLoading(false);
+      setLoading(false); // Ensure loading is set to false even if signup fails
     }
   };
 

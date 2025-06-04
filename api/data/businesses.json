@@ -1,7 +1,12 @@
 {
   "lantis": {
     "id": "lantis",
-    "password": "$2b$10$1ttVaipjBbVIWginZDJDQepUfXiGG1Yuq56qsJjxmIoAt/RuRlndO",
-    "role": "business"
+    "name": "Lantis",
+    "symbol": "LTS",
+    "ownerAddress": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+    "password": "$2b$10$4E8cuyDRCObUUnpa5hS8S.D0hP0oSwAZWiS2zp3VmU2X92xX7huTy",
+    "role": "business",
+    "address": "0xa16E02E87b7454126E5E10d957A927A7F5B5d2be",
+    "decimals": 18
   }
 }

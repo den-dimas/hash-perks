@@ -1,3 +1,4 @@
+// File: ./frontend/app/business/dashboard/page.jsx
 "use client";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,6 +9,7 @@ import {
   getBalance,
   addProductToCatalog,
   getProductsByBusiness,
+  getBusinessTransactions,
 } from "@/services/api";
 import {
   Loader2,
@@ -20,82 +22,94 @@ import {
   ExternalLink,
   PlusCircle,
   ShoppingBag,
+  History,
 } from "lucide-react";
 import Link from "next/link";
 import { ethers } from "ethers";
 
 export default function BusinessDashboard() {
-  const { business, isAuthenticated, isBusiness, loading: authLoading, currentUser } = useAuth(); // Get currentUser for token
+  const { business, isAuthenticated, isBusiness, loading: authLoading, currentUser } = useAuth();
   const { account, provider, signer } = useWeb3();
+
   const [businessContract, setBusinessContract] = useState(null);
   const [customerAddress, setCustomerAddress] = useState("");
   const [issueAmount, setIssueAmount] = useState("");
   const [customerBalance, setCustomerBalance] = useState(null);
-  const [isLoading, setIsLoading] = useState(true); // Overall loading for the page
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [isIssuing, setIsIssuing] = useState(false);
   const [isFetchingBalance, setIsFetchingBalance] = useState(false);
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
 
-  // NEW: Product Catalog State
+  // Product Catalog State
   const [products, setProducts] = useState([]);
   const [newProductName, setNewProductName] = useState("");
   const [newProductPrice, setNewProductPrice] = useState("");
   const [newProductLoyaltyPoints, setNewProductLoyaltyPoints] = useState("");
   const [isAddingProduct, setIsAddingProduct] = useState(false);
 
+  // Transaction History State
+  const [transactions, setTransactions] = useState([]);
+
+  const currentBusinessId = business?.id;
+
   useEffect(() => {
-    // Only proceed if auth is not loading and user is authenticated as a business
+    console.log("BusinessDashboard useEffect triggered.");
+    console.log("  authLoading:", authLoading);
+    console.log("  isAuthenticated:", isAuthenticated);
+    console.log("  isBusiness:", isBusiness);
+    console.log("  business?.id (from AuthContext):", business?.id);
+    console.log("  currentUser?.token (from AuthContext):", currentUser?.token);
+
     if (authLoading) {
-      setIsLoading(true); // Keep loading if auth is still determining state
+      setIsLoadingData(true);
       return;
     }
 
-    // CRITICAL CHECK: Ensure it's a BUSINESS and authenticated
-    if (!isAuthenticated || !isBusiness) {
-      setMessage({ type: "error", text: "Please log in as a business to access this page." });
-      setIsLoading(false);
+    if (!isAuthenticated || !isBusiness || !currentBusinessId) {
+      console.log("BusinessDashboard: Access Denied condition met.");
+      setMessage({ type: "error", text: `Access Denied: You must be logged in as a business to view this page.` });
+      setIsLoadingData(false);
       return;
     }
 
     const fetchBusinessData = async () => {
-      setIsLoading(true); // Start loading for data fetch
+      setIsLoadingData(true);
       setError(null);
       setMessage(null);
       try {
-        // Ensure business.id and currentUser.token are available before making the API call
-        if (business?.id && currentUser?.token) {
-          const contractInfo = await getBusinessContractInfo(business.id, currentUser.token); // Pass token
+        if (currentBusinessId && currentUser?.token) {
+          console.log("BusinessDashboard: Fetching business data for ID:", currentBusinessId);
+          const contractInfo = await getBusinessContractInfo(currentBusinessId, currentUser.token, true);
           setBusinessContract(contractInfo);
 
-          // NEW: Fetch product catalog for this business
-          const productData = await getProductsByBusiness(business.id);
+          const productData = await getProductsByBusiness(currentBusinessId);
           setProducts(productData.products);
+
+          const transactionHistory = await getBusinessTransactions(currentBusinessId, currentUser.token);
+          setTransactions(transactionHistory.transactions);
+          console.log("BusinessDashboard: Data fetched successfully.");
         } else {
-          // This case should ideally not be hit if isAuthenticated and isBusiness are true
-          // but if business.id or token is somehow missing, it's an issue.
+          console.error("BusinessDashboard: Missing critical data for fetch (currentBusinessId or token).");
           setError("Business ID or authentication token not found in authentication context.");
           setBusinessContract(null);
         }
       } catch (err) {
-        console.error("Error fetching business dashboard data:", err);
+        console.error("BusinessDashboard: Error fetching business dashboard data:", err);
         setError(err.message || "Failed to load business dashboard data.");
         setBusinessContract(null);
       } finally {
-        setIsLoading(false); // End loading after data fetch attempt
+        setIsLoadingData(false);
       }
     };
 
-    // Fetch data only if business object is available and not already loading its data
-    if (business?.id && currentUser?.token) {
-      // Only fetch if business.id and token are confirmed to exist
+    if (!authLoading && isAuthenticated && isBusiness && currentBusinessId && currentUser?.token) {
       fetchBusinessData();
     }
-  }, [business, isAuthenticated, isBusiness, authLoading, currentUser]); // Depend on business and authLoading, currentUser
+  }, [isAuthenticated, isBusiness, authLoading, currentUser, business, currentBusinessId]);
 
   const handleIssuePoints = async (e) => {
     e.preventDefault();
-    // Ensure all necessary data, including the token, is available
     if (!businessContract || !customerAddress || !issueAmount || !account || !currentUser?.token) {
       setError("Please fill all fields, connect your wallet, and ensure you are logged in.");
       return;
@@ -106,23 +120,22 @@ export default function BusinessDashboard() {
     setMessage(null);
 
     try {
-      // Validate customer address format
       if (!ethers.isAddress(customerAddress)) {
         throw new Error("Invalid customer wallet address format.");
       }
 
-      // Convert amount to a number and validate
       const amount = parseFloat(issueAmount);
       if (isNaN(amount) || amount <= 0) {
         throw new Error("Amount must be a positive number.");
       }
 
-      // Call the API to issue points, passing the token
-      await issuePoints(business.id, customerAddress, amount, currentUser.token); // Pass currentUser.token
+      await issuePoints(currentBusinessId, customerAddress, amount, currentUser.token);
       setMessage({ type: "success", text: `Successfully issued ${amount} points to ${customerAddress}!` });
-      setIssueAmount(""); // Clear amount field
+      setIssueAmount("");
 
-      // Optionally, refresh balance after issuing
+      const updatedTransactions = await getBusinessTransactions(currentBusinessId, currentUser.token);
+      setTransactions(updatedTransactions.transactions);
+
       await handleGetBalance();
     } catch (err) {
       console.error("Error issuing points:", err);
@@ -142,13 +155,13 @@ export default function BusinessDashboard() {
     setIsFetchingBalance(true);
     setError(null);
     setMessage(null);
-    setCustomerBalance(null); // Clear previous balance
+    setCustomerBalance(null);
 
     try {
       if (!ethers.isAddress(customerAddress)) {
         throw new Error("Invalid customer wallet address format.");
       }
-      const balance = await getBalance(business.id, customerAddress);
+      const balance = await getBalance(currentBusinessId, customerAddress);
       setCustomerBalance(balance);
       setMessage({ type: "success", text: `Balance for ${customerAddress}: ${balance} points.` });
     } catch (err) {
@@ -160,10 +173,9 @@ export default function BusinessDashboard() {
     }
   };
 
-  // NEW: Handle adding a new product to the catalog
   const handleAddProduct = async (e) => {
     e.preventDefault();
-    if (!business?.id || !currentUser?.token || !newProductName || !newProductPrice || !newProductLoyaltyPoints) {
+    if (!currentBusinessId || !currentUser?.token || !newProductName || !newProductPrice || !newProductLoyaltyPoints) {
       setError("Please fill all product fields and ensure you are logged in.");
       return;
     }
@@ -189,7 +201,7 @@ export default function BusinessDashboard() {
         loyaltyPoints: points,
       };
 
-      const result = await addProductToCatalog(business.id, productData, currentUser.token);
+      const result = await addProductToCatalog(currentBusinessId, productData, currentUser.token);
       setProducts((prev) => [...prev, result.product]);
       setMessage({ type: "success", text: `Product "${result.product.name}" added successfully!` });
       setNewProductName("");
@@ -204,22 +216,23 @@ export default function BusinessDashboard() {
     }
   };
 
-  if (authLoading || isLoading) {
+  if (authLoading || isLoadingData) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-12 w-12 animate-spin text-polka-pink" />
-        <p className="mt-4 text-lg text-slate-600">Loading business dashboard...</p>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] bg-light-bg-primary">
+        <Loader2 className="h-12 w-12 animate-spin text-accent-green" />
+        <p className="mt-4 text-lg text-light-text-secondary">Loading business dashboard...</p>
       </div>
     );
   }
 
-  if (!isAuthenticated || !isBusiness) {
+  if (!isAuthenticated || !isBusiness || !currentBusinessId) {
+    console.log("BusinessDashboard: Rendering Access Denied message.");
     return (
-      <div className="text-center py-20">
-        <XCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold text-slate-800 mb-4">Access Denied</h2>
-        <p className="text-slate-600 mb-6">You must be logged in as a business to view this page.</p>
-        <Link href="/login" className="btn-primary-dark">
+      <div className="text-center py-20 bg-light-bg-secondary rounded-2xl shadow-medium-shadow p-8 border border-gray-200">
+        <XCircle className="h-16 w-16 text-status-error mx-auto mb-4" />
+        <h2 className="text-2xl font-bold text-light-text-primary mb-4">Access Denied</h2>
+        <p className="text-light-text-secondary mb-6">You must be logged in as a business to view this page.</p>
+        <Link href="/login" className="btn-primary">
           Login as Business
         </Link>
       </div>
@@ -228,15 +241,15 @@ export default function BusinessDashboard() {
 
   if (!businessContract) {
     return (
-      <div className="text-center py-20">
-        <Info className="h-16 w-16 text-blue-500 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold text-slate-800 mb-4">No Loyalty Program Found or Error</h2>
-        <p className="text-slate-600 mb-6">
-          It seems your business ({business?.id}) does not have an associated loyalty program contract deployed yet, or
-          there was an error fetching its details.
+      <div className="text-center py-20 bg-light-bg-secondary rounded-2xl shadow-medium-shadow p-8 border border-gray-200">
+        <Info className="h-16 w-16 text-status-info mx-auto mb-4" />
+        <h2 className="text-2xl font-bold text-light-text-primary mb-4">No Loyalty Program Found or Error</h2>
+        <p className="text-light-text-secondary mb-6">
+          It seems your business ({currentBusinessId}) does not have an associated loyalty program contract deployed
+          yet, or there was an error fetching its details.
         </p>
-        {error && <p className="text-red-500 text-sm mt-2">Error details: {error}</p>}
-        <p className="text-slate-600 mb-6">
+        {error && <p className="text-status-error text-sm mt-2">Error details: {error}</p>}
+        <p className="text-light-text-secondary mb-6">
           Please ensure your business was registered correctly, which includes deploying your loyalty token.
         </p>
       </div>
@@ -244,80 +257,78 @@ export default function BusinessDashboard() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 bg-white rounded-xl shadow-lg">
-      <h1 className="text-3xl font-bold text-slate-800 mb-6 text-center">Business Dashboard: {business?.id}</h1>
+    <div className="max-w-4xl mx-auto p-6 bg-light-bg-secondary rounded-2xl shadow-medium-shadow border border-gray-200">
+      <h1 className="text-3xl font-bold text-light-text-primary mb-6 text-center">
+        Business Dashboard: {currentBusinessId}
+      </h1>
 
       {message && (
-        <div
-          className={`p-4 mb-4 rounded-md flex items-center ${
-            message.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-          }`}
-        >
+        <div className={message.type === "success" ? "message-box-success" : "message-box-error"}>
           {message.type === "success" ? <CheckCircle className="h-5 w-5 mr-2" /> : <XCircle className="h-5 w-5 mr-2" />}
           {message.text}
         </div>
       )}
 
       {error && (
-        <div className="p-4 mb-4 rounded-md bg-red-100 text-red-800 flex items-center">
+        <div className="message-box-error">
           <XCircle className="h-5 w-5 mr-2" />
           {error}
         </div>
       )}
 
-      <div className="mb-8 p-4 border border-slate-200 rounded-lg bg-slate-50">
-        <h2 className="text-xl font-semibold text-slate-700 mb-3 flex items-center">
-          <Wallet className="h-5 w-5 mr-2 text-polka-pink" /> Connected Wallet
+      <div className="mb-8 p-4 bg-light-bg-primary rounded-xl shadow-subtle-shadow border border-gray-200">
+        <h2 className="text-xl font-semibold text-light-text-primary mb-3 flex items-center">
+          <Wallet className="h-5 w-5 mr-2 text-accent-green" /> Connected Wallet
         </h2>
         {account ? (
-          <p className="text-slate-600 break-all">
+          <p className="text-light-text-secondary break-all">
             <span className="font-medium">Address:</span> {account}
           </p>
         ) : (
-          <p className="text-red-500">Wallet not connected. Please connect your wallet to issue points.</p>
+          <p className="text-status-error">Wallet not connected. Please connect your wallet to issue points.</p>
         )}
       </div>
 
-      <div className="mb-8 p-4 border border-slate-200 rounded-lg bg-slate-50">
-        <h2 className="text-xl font-semibold text-slate-700 mb-3 flex items-center">
-          <Info className="h-5 w-5 mr-2 text-polka-pink" /> Loyalty Program Details
+      <div className="mb-8 p-4 bg-light-bg-primary rounded-xl shadow-subtle-shadow border border-gray-200">
+        <h2 className="text-xl font-semibold text-light-text-primary mb-3 flex items-center">
+          <Info className="h-5 w-5 mr-2 text-accent-green" /> Loyalty Program Details
         </h2>
-        <p className="text-slate-600">
+        <p className="text-light-text-secondary">
           <span className="font-medium">Name:</span> {businessContract.name}
         </p>
-        <p className="text-slate-600">
+        <p className="text-light-text-secondary">
           <span className="font-medium">Symbol:</span> {businessContract.symbol}
         </p>
-        <p className="text-slate-600 break-all">
+        <p className="text-light-text-secondary break-all">
           <span className="font-medium">Contract Address:</span> {businessContract.address}{" "}
           <a
-            href={`https://sepolia.etherscan.io/address/${businessContract.address}`} // Replace with your actual block explorer if not Sepolia
+            href={`https://sepolia.etherscan.io/address/${businessContract.address}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-500 hover:underline inline-flex items-center"
+            className="text-accent-blue-light hover:underline inline-flex items-center"
           >
             <ExternalLink className="h-4 w-4 ml-1" />
           </a>
         </p>
-        <p className="text-slate-600 break-all">
+        <p className="text-light-text-secondary break-all">
           <span className="font-medium">Contract Owner:</span> {businessContract.owner}
         </p>
       </div>
 
-      {/* NEW: Product Catalog Management */}
+      {/* Product Catalog Management */}
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-slate-800 mb-4 flex items-center">
-          <ShoppingBag className="h-6 w-6 mr-2 text-polka-pink" /> Product Catalog
+        <h2 className="text-2xl font-bold text-light-text-primary mb-4 flex items-center">
+          <ShoppingBag className="h-6 w-6 mr-2 text-accent-green" /> Product Catalog
         </h2>
 
         {/* Add New Product Form */}
-        <div className="p-4 border border-slate-200 rounded-lg bg-slate-50 mb-6">
-          <h3 className="text-lg font-semibold text-slate-700 mb-3 flex items-center">
-            <PlusCircle className="h-5 w-5 mr-2 text-polka-pink" /> Add New Product
+        <div className="p-4 bg-light-bg-primary rounded-xl shadow-subtle-shadow border border-gray-200 mb-6">
+          <h3 className="text-lg font-semibold text-light-text-primary mb-3 flex items-center">
+            <PlusCircle className="h-5 w-5 mr-2 text-accent-green" /> Add New Product
           </h3>
           <form onSubmit={handleAddProduct} className="space-y-3">
             <div>
-              <label htmlFor="productName" className="block text-sm font-medium text-slate-700 mb-1">
+              <label htmlFor="productName" className="block text-sm font-medium text-light-text-primary mb-1">
                 Product Name:
               </label>
               <input
@@ -332,7 +343,7 @@ export default function BusinessDashboard() {
               />
             </div>
             <div>
-              <label htmlFor="productPrice" className="block text-sm font-medium text-slate-700 mb-1">
+              <label htmlFor="productPrice" className="block text-sm font-medium text-light-text-primary mb-1">
                 Price (Rp):
               </label>
               <input
@@ -349,7 +360,7 @@ export default function BusinessDashboard() {
               />
             </div>
             <div>
-              <label htmlFor="productLoyaltyPoints" className="block text-sm font-medium text-slate-700 mb-1">
+              <label htmlFor="productLoyaltyPoints" className="block text-sm font-medium text-light-text-primary mb-1">
                 Loyalty Points:
               </label>
               <input
@@ -367,8 +378,8 @@ export default function BusinessDashboard() {
             </div>
             <button
               type="submit"
-              className="btn-primary-dark w-full"
-              disabled={isAddingProduct || !business?.id || !currentUser?.token}
+              className="btn-primary w-full"
+              disabled={isAddingProduct || !currentBusinessId || !currentUser?.token}
             >
               {isAddingProduct ? (
                 <Loader2 className="h-5 w-5 animate-spin mr-2" />
@@ -381,16 +392,16 @@ export default function BusinessDashboard() {
         </div>
 
         {/* Existing Products List */}
-        <h3 className="text-xl font-semibold text-slate-700 mb-3">Your Products</h3>
+        <h3 className="text-xl font-semibold text-light-text-primary mb-3">Your Products</h3>
         {products.length === 0 ? (
-          <p className="text-slate-600">No products added to your catalog yet.</p>
+          <p className="text-light-text-secondary">No products added to your catalog yet.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {products.map((product) => (
               <div key={product.id} className="card-modern">
-                <h4 className="text-lg font-semibold text-polka-dark">{product.name}</h4>
-                <p className="text-slate-600">Price: Rp{product.priceRp.toLocaleString()}</p>
-                <p className="text-slate-600">Loyalty Points: {product.loyaltyPoints}</p>
+                <h4 className="text-lg font-semibold text-accent-green">{product.name}</h4>
+                <p className="text-light-text-secondary">Price: Rp{product.priceRp.toLocaleString()}</p>
+                <p className="text-light-text-secondary">Loyalty Points: {product.loyaltyPoints}</p>
               </div>
             ))}
           </div>
@@ -399,10 +410,10 @@ export default function BusinessDashboard() {
 
       {/* Existing Issue Loyalty Points Section */}
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-slate-800 mb-4">Manually Issue Loyalty Points</h2>
+        <h2 className="text-2xl font-bold text-light-text-primary mb-4">Manually Issue Loyalty Points</h2>
         <form onSubmit={handleIssuePoints} className="space-y-4">
           <div>
-            <label htmlFor="customerAddress" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="customerAddress" className="block text-sm font-medium text-light-text-primary mb-1">
               Customer Wallet Address:
             </label>
             <input
@@ -416,7 +427,7 @@ export default function BusinessDashboard() {
             />
           </div>
           <div>
-            <label htmlFor="issueAmount" className="block text-sm font-medium text-slate-700 mb-1">
+            <label htmlFor="issueAmount" className="block text-sm font-medium text-light-text-primary mb-1">
               Amount to Issue:
             </label>
             <input
@@ -433,20 +444,20 @@ export default function BusinessDashboard() {
           </div>
           <button
             type="submit"
-            className="btn-primary-dark w-full"
+            className="btn-primary w-full"
             disabled={isIssuing || !account || !businessContract || !currentUser?.token}
           >
             {isIssuing ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Send className="h-5 w-5 mr-2" />}
             {isIssuing ? "Issuing Points..." : "Issue Points"}
           </button>
-          {!account && <p className="text-red-500 text-sm mt-2">Please connect your wallet to issue points.</p>}
-          {!currentUser?.token && <p className="text-red-500 text-sm mt-2">Please log in to issue points.</p>}
+          {!account && <p className="text-status-error text-sm mt-2">Please connect your wallet to issue points.</p>}
+          {!currentUser?.token && <p className="text-status-error text-sm mt-2">Please log in to issue points.</p>}
         </form>
       </div>
 
       {/* Existing Check Customer Balance Section */}
-      <div>
-        <h2 className="text-2xl font-bold text-slate-800 mb-4">Check Customer Balance</h2>
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-light-text-primary mb-4">Check Customer Balance</h2>
         <div className="flex space-x-2">
           <input
             type="text"
@@ -458,16 +469,54 @@ export default function BusinessDashboard() {
           />
           <button
             onClick={handleGetBalance}
-            className="btn-secondary-light px-6 py-2.5"
+            className="btn-secondary px-6 py-2.5"
             disabled={isFetchingBalance || !customerAddress || !businessContract}
           >
             {isFetchingBalance ? <Loader2 className="h-5 w-5 animate-spin" /> : <DollarSign className="h-5 w-5" />}
           </button>
         </div>
         {customerBalance !== null && (
-          <p className="mt-4 text-lg font-semibold text-slate-800">
+          <p className="mt-4 text-lg font-semibold text-light-text-primary">
             Current Balance: {customerBalance} {businessContract.symbol}
           </p>
+        )}
+      </div>
+
+      {/* Transaction History Section */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-light-text-primary mb-4 flex items-center">
+          <History className="h-6 w-6 mr-2 text-accent-green" /> Business Transaction History
+        </h2>
+        {transactions.length === 0 ? (
+          <p className="text-light-text-secondary">No transactions recorded yet for this business.</p>
+        ) : (
+          <div className="space-y-4">
+            {transactions
+              .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+              .map((txn) => (
+                <div key={txn.id} className="card-modern p-4">
+                  <p className="text-sm text-light-text-secondary">{new Date(txn.timestamp).toLocaleString()}</p>
+                  <p className="text-md font-semibold text-light-text-primary">
+                    {txn.type === "issue" && (
+                      <span className="text-status-success">
+                        Issued {txn.amount} {txn.loyaltyTokenSymbol} points
+                      </span>
+                    )}
+                    {txn.type === "redeem" && (
+                      <span className="text-status-error">
+                        Redeemed {txn.amount} {txn.loyaltyTokenSymbol} points
+                      </span>
+                    )}
+                    {txn.type === "purchase" && (
+                      <span className="text-status-info">
+                        Customer "{txn.userId}" purchased "{txn.productName}" for Rp{txn.amount.toLocaleString()}
+                      </span>
+                    )}{" "}
+                    to <span className="font-bold">{txn.customerWalletAddress}</span>
+                  </p>
+                </div>
+              ))}
+          </div>
         )}
       </div>
     </div>

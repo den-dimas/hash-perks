@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const authService = require("../services/authService");
+const businessService = require("../services/businessService"); // NEW: Import businessService
 
 // User Login Route
 router.post("/login/user", (req, res) => {
@@ -20,6 +21,7 @@ router.post("/login/user", (req, res) => {
           role: user.role,
           dummyBalanceRp: user.dummyBalanceRp,
           subscriptions: user.subscriptions,
+          walletAddress: user.walletAddress, // Ensure walletAddress is included
         },
       });
     } else {
@@ -31,7 +33,7 @@ router.post("/login/user", (req, res) => {
   }
 });
 
-// Business Login Route
+// Business Login Route (MODIFIED)
 router.post("/login/business", (req, res) => {
   const { businessId, password } = req.body;
   if (!businessId || !password) {
@@ -39,14 +41,22 @@ router.post("/login/business", (req, res) => {
   }
 
   try {
-    const business = authService.verifyBusiness(businessId, password);
-    if (business) {
+    // 1. Get the full business details (including hashed password) from businessService
+    const business = businessService.getBusinessForAuth(businessId);
+    if (!business) {
+      return res.status(401).json({ success: false, message: "Invalid business ID or password." });
+    }
+
+    // 2. Verify password using authService
+    const verifiedBusiness = authService.verifyBusiness(business, password); // Pass the full business object
+
+    if (verifiedBusiness) {
       res.json({
         success: true,
         message: "Business logged in successfully.",
         business: {
-          id: business.id,
-          role: business.role,
+          id: verifiedBusiness.id,
+          role: verifiedBusiness.role,
         },
       });
     } else {
@@ -58,9 +68,8 @@ router.post("/login/business", (req, res) => {
   }
 });
 
-// User Registration Route
+// User Registration Route (remains unchanged)
 router.post("/register/user", (req, res) => {
-  // <-- THIS IS THE TARGET ENDPOINT
   const { userId, password, walletAddress } = req.body;
 
   if (!userId || !password || !walletAddress) {
@@ -85,31 +94,6 @@ router.post("/register/user", (req, res) => {
   }
 });
 
-// Business Registration Route
-router.post("/register/business", (req, res) => {
-  // <-- THIS IS THE TARGET ENDPOINT
-  const { businessId, businessName, businessSymbol, walletAddress, password } = req.body;
-
-  if (!businessId || !businessName || !businessSymbol || !walletAddress || !password) {
-    return res.status(400).json({ success: false, message: "All business registration fields are required." });
-  }
-
-  try {
-    const newBusiness = authService.registerBusiness(businessId, businessName, businessSymbol, walletAddress, password);
-    if (newBusiness) {
-      res.status(201).json({ success: true, message: "Business registered successfully.", business: newBusiness });
-    } else {
-      res.status(400).json({ success: false, message: "Business registration failed due to an unknown reason." });
-    }
-  } catch (error) {
-    console.error("Error during business registration:", error);
-    if (error.message.includes("already exists") || error.message.includes("already registered")) {
-      return res.status(409).json({ success: false, message: error.message });
-    }
-    res
-      .status(500)
-      .json({ success: false, message: error.message || "An unexpected error occurred during business registration." });
-  }
-});
+// REMOVED: Business Registration Route from here. It moves to api/routes/business.js
 
 module.exports = router;

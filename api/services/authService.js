@@ -1,37 +1,28 @@
 const fs = require("fs");
 const path = require("path");
 const bcrypt = require("bcryptjs");
+// No longer importing businessService directly here to avoid circular dependencies
+// Business details will be passed in from routes or other services that manage them.
 
 const usersFilePath = path.join(__dirname, "../data/users.json");
-const businessesFilePath = path.join(__dirname, "../data/businesses.json");
 
 let users = {};
-let businesses = {};
 
-// Load user and business data from JSON files
+// Load user data from JSON file (only users now)
 const loadData = () => {
   try {
     if (fs.existsSync(usersFilePath)) {
       const userData = fs.readFileSync(usersFilePath, "utf8");
       users = JSON.parse(userData);
-      console.log("User data loaded successfully.");
+      console.log("AuthService: User data loaded successfully.");
     } else {
-      console.log("No users.json found, starting with empty users.");
+      console.log("AuthService: No users.json found, starting with empty users.");
       users = {};
     }
-
-    if (fs.existsSync(businessesFilePath)) {
-      const businessData = fs.readFileSync(businessesFilePath, "utf8");
-      businesses = JSON.parse(businessData);
-      console.log("Business data loaded successfully.");
-    } else {
-      console.log("No businesses.json found, starting with empty businesses.");
-      businesses = {};
-    }
+    // No longer loading businesses.json here
   } catch (error) {
-    console.error("Error loading auth data:", error);
+    console.error("AuthService: Error loading user data:", error);
     users = {};
-    businesses = {};
   }
 };
 
@@ -39,24 +30,13 @@ const loadData = () => {
 const saveUsers = () => {
   try {
     fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), "utf8");
-    console.log("User data saved successfully.");
+    console.log("AuthService: User data saved successfully.");
   } catch (error) {
-    console.error("Error saving user data:", error);
-  }
-};
-
-// Save business data to JSON file
-const saveBusinesses = () => {
-  try {
-    fs.writeFileSync(businessesFilePath, JSON.stringify(businesses, null, 2), "utf8");
-    console.log("Business data saved successfully.");
-  } catch (error) {
-    console.error("Error saving business data:", error);
+    console.error("AuthService: Error saving user data:", error);
   }
 };
 
 // User Registration
-// MODIFIED: registerUser now accepts walletAddress
 const registerUser = (userId, password, walletAddress) => {
   if (users[userId]) {
     throw new Error("User ID already exists.");
@@ -68,25 +48,10 @@ const registerUser = (userId, password, walletAddress) => {
     role: "user",
     dummyBalanceRp: 0,
     subscriptions: {},
-    walletAddress: walletAddress, // NEW: Store wallet address for the user
+    walletAddress: walletAddress,
   };
   saveUsers();
   return { id: userId, role: "user", dummyBalanceRp: 0, subscriptions: {}, walletAddress: walletAddress };
-};
-
-// Business Registration (no change needed here for walletAddress, as it's ownerAddress)
-const registerBusiness = (businessId, password) => {
-  if (businesses[businessId]) {
-    throw new Error("Business ID already exists.");
-  }
-  const hashedPassword = bcrypt.hashSync(password, 10);
-  businesses[businessId] = {
-    id: businessId,
-    password: hashedPassword,
-    role: "business",
-  };
-  saveBusinesses();
-  return { id: businessId, role: "business" };
 };
 
 // User Login
@@ -104,23 +69,25 @@ const verifyUser = (userId, password) => {
   return null;
 };
 
-// Business Login
-const verifyBusiness = (businessId, password) => {
-  const business = businesses[businessId];
-  if (business && bcrypt.compareSync(password, business.password)) {
-    return { id: business.id, role: business.role };
+// Business Login (now takes the full business object from businessService)
+const verifyBusiness = (business, password) => {
+  // MODIFIED: Takes 'business' object directly
+  if (!business) {
+    return null; // Business not found by businessService
   }
-  return null;
+  // Compare the provided plain password with the hashed password stored in the business object
+  const passwordMatch = bcrypt.compareSync(password, business.password);
+
+  if (passwordMatch) {
+    return { id: business.id, role: business.role };
+  } else {
+    return null;
+  }
 };
 
 // Get user by ID
 const getUserById = (userId) => {
   return users[userId];
-};
-
-// Get business by ID
-const getBusinessById = (businessId) => {
-  return businesses[businessId];
 };
 
 // Update user subscriptions
@@ -174,13 +141,11 @@ const deductDummyBalance = (userId, amount) => {
 loadData();
 
 module.exports = {
-  loadData,
+  loadData, // Only loads user data now
   registerUser,
-  registerBusiness,
   verifyUser,
-  verifyBusiness,
+  verifyBusiness, // Now takes business object
   getUserById,
-  getBusinessById,
   updateUserSubscription,
   getUserSubscriptions,
   addDummyBalance,

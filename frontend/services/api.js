@@ -1,3 +1,4 @@
+// File: ./frontend/services/api.js
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001/api/v1";
 
 const handleResponse = async (response) => {
@@ -10,13 +11,12 @@ const handleResponse = async (response) => {
 
 // --- Auth & Registration API Calls ---
 
-// MODIFIED: registerUser now accepts walletAddress and sends it
 export const registerUser = async (userId, password, walletAddress) => {
   try {
     const response = await fetch(`${API_BASE_URL}/auth/register/user`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, password, walletAddress }), // Include walletAddress
+      body: JSON.stringify({ userId, password, walletAddress }),
     });
     return handleResponse(response);
   } catch (error) {
@@ -27,7 +27,7 @@ export const registerUser = async (userId, password, walletAddress) => {
 
 export const registerBusiness = async (businessId, name, symbol, ownerAddress, password) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/auth/register/business`, {
+    const response = await fetch(`${API_BASE_URL}/business/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ businessId, name, symbol, ownerAddress, password }),
@@ -71,7 +71,7 @@ export const loginBusiness = async (businessId, password) => {
 
 export const getBusinesses = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/businesses`);
+    const response = await fetch(`${API_BASE_URL}/business`);
     return handleResponse(response);
   } catch (error) {
     console.error("Error fetching all businesses:", error);
@@ -79,16 +79,24 @@ export const getBusinesses = async () => {
   }
 };
 
-export const getBusinessContractInfo = async (businessId, token) => {
+export const getBusinessContractInfo = async (businessId, token = null, isAuthenticatedCall = false) => {
   if (businessId === "all") {
     return getBusinesses();
   }
   try {
     const headers = { "Content-Type": "application/json" };
-    if (token) {
-      headers["x-business-id"] = token;
+    let url = `${API_BASE_URL}/business/${businessId}`;
+
+    if (isAuthenticatedCall) {
+      url = `${API_BASE_URL}/business/${businessId}/details`;
+      if (token) {
+        headers["x-business-id"] = token;
+      } else {
+        throw new Error("Authentication token is required for authenticated business details.");
+      }
     }
-    const response = await fetch(`${API_BASE_URL}/businesses/${businessId}/contract-info`, { headers });
+
+    const response = await fetch(url, { headers });
     return handleResponse(response);
   } catch (error) {
     console.error(`Error fetching contract info for business ${businessId}:`, error);
@@ -104,7 +112,7 @@ export const issuePoints = async (businessId, customerAddress, amount, token) =>
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/businesses/${businessId}/issue-points`, {
+    const response = await fetch(`${API_BASE_URL}/business/${businessId}/issue-points`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -121,7 +129,7 @@ export const issuePoints = async (businessId, customerAddress, amount, token) =>
 
 export const getBalance = async (businessId, customerAddress) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/businesses/${businessId}/balance/${customerAddress}`);
+    const response = await fetch(`${API_BASE_URL}/business/${businessId}/balance/${customerAddress}`);
     const data = await handleResponse(response);
     return data.balance;
   } catch (error) {
@@ -130,16 +138,26 @@ export const getBalance = async (businessId, customerAddress) => {
   }
 };
 
-export const redeemPoints = async (businessId, customerAddress, amount, privateKey) => {
+// REMOVED: redeemPoints API call from here. It will be handled directly via ethers.js on frontend.
+// export const redeemPoints = async (businessId, customerAddress, amount, privateKey) => { ... };
+
+// NEW: API call to record a redemption on the backend
+export const recordRedemption = async (userId, businessId, customerAddress, amount, loyaltyTokenSymbol, token) => {
+  if (!token) {
+    throw new Error("User not authenticated. Please log in.");
+  }
   try {
-    const response = await fetch(`${API_BASE_URL}/businesses/${businessId}/redeem-points`, {
+    const response = await fetch(`${API_BASE_URL}/user/${userId}/record-redemption`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customerAddress, amount, privateKey }),
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-id": token,
+      },
+      body: JSON.stringify({ businessId, customerAddress, amount, loyaltyTokenSymbol }),
     });
     return handleResponse(response);
   } catch (error) {
-    console.error("Error redeeming points via API:", error);
+    console.error("Error recording redemption:", error);
     throw error;
   }
 };
@@ -246,7 +264,6 @@ export const addProductToCatalog = async (businessId, productData, token) => {
 
 export const getProductsByBusiness = async (businessId) => {
   try {
-    // No token needed for this public endpoint
     const response = await fetch(`${API_BASE_URL}/business/${businessId}/products`);
     return handleResponse(response);
   } catch (error) {
@@ -271,6 +288,41 @@ export const buyProduct = async (userId, businessId, productId, token) => {
     return handleResponse(response);
   } catch (error) {
     console.error("Error buying product:", error);
+    throw error;
+  }
+};
+
+// Transaction History API Calls
+export const getUserTransactions = async (userId, token) => {
+  if (!token) {
+    throw new Error("User not authenticated. Please log in.");
+  }
+  try {
+    const response = await fetch(`${API_BASE_URL}/user/${userId}/transactions`, {
+      headers: {
+        "x-user-id": token,
+      },
+    });
+    return handleResponse(response);
+  } catch (error) {
+    console.error("Error fetching user transactions:", error);
+    throw error;
+  }
+};
+
+export const getBusinessTransactions = async (businessId, token) => {
+  if (!token) {
+    throw new Error("Business not authenticated. Please log in.");
+  }
+  try {
+    const response = await fetch(`${API_BASE_URL}/business/${businessId}/transactions`, {
+      headers: {
+        "x-business-id": token,
+      },
+    });
+    return handleResponse(response);
+  } catch (error) {
+    console.error("Error fetching business transactions:", error);
     throw error;
   }
 };
