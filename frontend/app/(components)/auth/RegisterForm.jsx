@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useWeb3 } from "@/contexts/Web3Context";
-import { useAccount } from "wagmi"; // Import useAccount from wagmi
+// REMOVED: import { useAccount } from "wagmi"; // No longer directly used here
 import { Loader2, CheckCircle, XCircle, Wallet } from "lucide-react";
 import { ethers } from "ethers"; // For address validation
 
@@ -21,11 +21,8 @@ export function RegisterForm({ type, onUserRegister, onBusinessRegister }) {
   const [formError, setFormError] = useState(null); // For form validation errors
   const [isLoading, setIsLoading] = useState(false);
 
+  // Use the account from Web3Context directly
   const { connectWallet, account, isLoading: isWeb3Loading } = useWeb3();
-
-  // CRITICAL: Call useAccount unconditionally at the top level, as per React Rules of Hooks.
-  // The value will be defensively used based on 'mounted' state.
-  const { address: wagmiConnectedWalletAddress } = useAccount();
 
   // State to track if the component has fully mounted on the client
   const [mounted, setMounted] = useState(false);

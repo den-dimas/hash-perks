@@ -1,136 +1,188 @@
 const fs = require("fs");
 const path = require("path");
+const bcrypt = require("bcryptjs");
 
-const USERS_FILE = path.join(__dirname, "../data/users.json");
-const BUSINESSES_FILE = path.join(__dirname, "../data/businesses.json");
+const usersFilePath = path.join(__dirname, "../data/users.json");
+const businessesFilePath = path.join(__dirname, "../data/businesses.json");
 
-let users = {}; // In-memory store for userId -> { password }
-let businesses = {}; // In-memory store for businessId -> { password }
+let users = {};
+let businesses = {};
 
+// Load user and business data from JSON files
 const loadData = () => {
-  console.log("AuthService: Loading data...");
-  if (fs.existsSync(USERS_FILE)) {
-    users = JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
-    console.log("AuthService: Loaded existing users:", users);
-  } else {
-    console.log("AuthService: No existing users file found. Initializing empty users.");
-    users = {}; // Ensure it's an empty object if file doesn't exist
-    fs.writeFileSync(USERS_FILE, JSON.stringify({}, null, 2)); // Create empty file
-  }
+  try {
+    if (fs.existsSync(usersFilePath)) {
+      const userData = fs.readFileSync(usersFilePath, "utf8");
+      users = JSON.parse(userData);
+      console.log("User data loaded successfully.");
+    } else {
+      console.log("No users.json found, starting with empty users.");
+      users = {};
+    }
 
-  if (fs.existsSync(BUSINESSES_FILE)) {
-    businesses = JSON.parse(fs.readFileSync(BUSINESSES_FILE, "utf8"));
-    console.log("AuthService: Loaded existing businesses:", businesses);
-  } else {
-    console.log("AuthService: No existing businesses file found. Initializing empty businesses.");
-    businesses = {}; // Ensure it's an empty object if file doesn't exist
-    fs.writeFileSync(BUSINESSES_FILE, JSON.stringify({}, null, 2)); // Create empty file
+    if (fs.existsSync(businessesFilePath)) {
+      const businessData = fs.readFileSync(businessesFilePath, "utf8");
+      businesses = JSON.parse(businessData);
+      console.log("Business data loaded successfully.");
+    } else {
+      console.log("No businesses.json found, starting with empty businesses.");
+      businesses = {};
+    }
+  } catch (error) {
+    console.error("Error loading auth data:", error);
+    users = {};
+    businesses = {};
   }
 };
 
+// Save user data to JSON file
 const saveUsers = () => {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-  console.log("AuthService: Users saved to:", USERS_FILE);
+  try {
+    fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), "utf8");
+    console.log("User data saved successfully.");
+  } catch (error) {
+    console.error("Error saving user data:", error);
+  }
 };
 
+// Save business data to JSON file
 const saveBusinesses = () => {
-  fs.writeFileSync(BUSINESSES_FILE, JSON.stringify(businesses, null, 2));
-  console.log("AuthService: Businesses saved to:", BUSINESSES_FILE);
+  try {
+    fs.writeFileSync(businessesFilePath, JSON.stringify(businesses, null, 2), "utf8");
+    console.log("Business data saved successfully.");
+  } catch (error) {
+    console.error("Error saving business data:", error);
+  }
 };
 
-const registerUser = (userId, password) => {
-  console.log(`AuthService: Attempting to register user: ${userId}`);
+// User Registration
+// MODIFIED: registerUser now accepts walletAddress
+const registerUser = (userId, password, walletAddress) => {
   if (users[userId]) {
-    console.warn(`AuthService: User ID '${userId}' already exists.`);
     throw new Error("User ID already exists.");
   }
-  users[userId] = { password };
+  const hashedPassword = bcrypt.hashSync(password, 10);
+  users[userId] = {
+    id: userId,
+    password: hashedPassword,
+    role: "user",
+    dummyBalanceRp: 0,
+    subscriptions: {},
+    walletAddress: walletAddress, // NEW: Store wallet address for the user
+  };
   saveUsers();
-  console.log(`AuthService: User '${userId}' registered successfully.`);
-  return { id: userId };
+  return { id: userId, role: "user", dummyBalanceRp: 0, subscriptions: {}, walletAddress: walletAddress };
 };
 
+// Business Registration (no change needed here for walletAddress, as it's ownerAddress)
 const registerBusiness = (businessId, password) => {
-  console.log(`AuthService: Attempting to register business: ${businessId}`);
-  console.log("AuthService: Current businesses in memory before check:", businesses);
   if (businesses[businessId]) {
-    console.warn(`AuthService: Business ID '${businessId}' already exists.`);
     throw new Error("Business ID already exists.");
   }
-  businesses[businessId] = { password };
+  const hashedPassword = bcrypt.hashSync(password, 10);
+  businesses[businessId] = {
+    id: businessId,
+    password: hashedPassword,
+    role: "business",
+  };
   saveBusinesses();
-  console.log(`AuthService: Business '${businessId}' registered successfully.`);
-  return { id: businessId };
+  return { id: businessId, role: "business" };
 };
 
-const authenticateUser = (userId, password) => {
+// User Login
+const verifyUser = (userId, password) => {
   const user = users[userId];
-  if (user && user.password === password) {
-    return { id: userId, role: "user" };
+  if (user && bcrypt.compareSync(password, user.password)) {
+    return {
+      id: user.id,
+      role: user.role,
+      dummyBalanceRp: user.dummyBalanceRp,
+      subscriptions: user.subscriptions,
+      walletAddress: user.walletAddress,
+    };
   }
   return null;
 };
 
-const authenticateBusiness = (businessId, password) => {
+// Business Login
+const verifyBusiness = (businessId, password) => {
   const business = businesses[businessId];
-  if (business && business.password === password) {
-    return { id: businessId, role: "business" };
+  if (business && bcrypt.compareSync(password, business.password)) {
+    return { id: business.id, role: business.role };
   }
   return null;
 };
 
-// NEW: Login function for users
-const loginUser = (userId, password) => {
-  console.log(`AuthService: Attempting user login for: ${userId}`);
-  const user = authenticateUser(userId, password);
-  if (user) {
-    console.log(`AuthService: User '${userId}' authenticated successfully.`);
-    return { success: true, message: "User authenticated", user };
-  } else {
-    console.log(`AuthService: User '${userId}' authentication failed.`);
-    return { success: false, message: "Invalid user ID or password." };
-  }
-};
-
-// NEW: Login function for businesses
-const loginBusiness = (businessId, password) => {
-  console.log(`AuthService: Attempting business login for: ${businessId}`);
-  const business = authenticateBusiness(businessId, password);
-  if (business) {
-    console.log(`AuthService: Business '${businessId}' authenticated successfully.`);
-    return { success: true, message: "Business authenticated", business };
-  } else {
-    console.log(`AuthService: Business '${businessId}' authentication failed.`);
-    return { success: false, message: "Invalid business ID or password." };
-  }
-};
-
+// Get user by ID
 const getUserById = (userId) => {
-  console.log(`AuthService: Checking for user by ID: ${userId}`);
-  console.log("AuthService: Current users in memory:", users);
-  if (users[userId]) {
-    return { id: userId, role: "user" };
-  }
-  return null;
+  return users[userId];
 };
 
+// Get business by ID
 const getBusinessById = (businessId) => {
-  console.log(`AuthService: Checking for business by ID: ${businessId}`);
-  console.log("AuthService: Current businesses in memory:", businesses);
-  if (businesses[businessId]) {
-    return { id: businessId, role: "business" };
-  }
-  return null;
+  return businesses[businessId];
 };
+
+// Update user subscriptions
+const updateUserSubscription = (userId, businessId, walletAddress) => {
+  if (!users[userId]) {
+    throw new Error("User not found.");
+  }
+  users[userId].subscriptions[businessId] = {
+    walletAddress,
+    subscribedAt: new Date().toISOString(),
+  };
+  saveUsers();
+  return users[userId].subscriptions[businessId];
+};
+
+// Get user subscriptions
+const getUserSubscriptions = (userId) => {
+  if (!users[userId]) {
+    throw new Error("User not found.");
+  }
+  return users[userId].subscriptions;
+};
+
+// Add dummy balance to a user
+const addDummyBalance = (userId, amount) => {
+  if (!users[userId]) {
+    throw new Error("User not found.");
+  }
+  if (amount <= 0) {
+    throw new Error("Amount must be positive.");
+  }
+  users[userId].dummyBalanceRp += amount;
+  saveUsers();
+  return users[userId].dummyBalanceRp;
+};
+
+// Deduct dummy balance from a user
+const deductDummyBalance = (userId, amount) => {
+  if (!users[userId]) {
+    throw new Error("User not found.");
+  }
+  if (users[userId].dummyBalanceRp < amount) {
+    throw new Error("Insufficient dummy balance.");
+  }
+  users[userId].dummyBalanceRp -= amount;
+  saveUsers();
+  return users[userId].dummyBalanceRp;
+};
+
+// Initialize by loading data on startup
+loadData();
 
 module.exports = {
   loadData,
   registerUser,
   registerBusiness,
-  authenticateUser,
-  authenticateBusiness,
-  loginUser, // Export new login function
-  loginBusiness, // Export new login function
+  verifyUser,
+  verifyBusiness,
   getUserById,
   getBusinessById,
+  updateUserSubscription,
+  getUserSubscriptions,
+  addDummyBalance,
+  deductDummyBalance,
 };

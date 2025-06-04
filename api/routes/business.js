@@ -2,7 +2,8 @@ const express = require("express");
 const router = express.Router();
 const businessService = require("../services/businessService");
 const authService = require("../services/authService");
-const loyaltyService = require("../services/loyaltyService"); // Import loyaltyService
+const loyaltyService = require("../services/loyaltyService");
+const productService = require("../services/productService"); // NEW: Import productService
 const { authenticateBusiness } = require("../middleware/authMiddleware");
 
 // Register a new business and deploy its loyalty token contract
@@ -115,11 +116,53 @@ router.get("/:businessId/balance/:customerAddress", async (req, res) => {
   const { businessId, customerAddress } = req.params;
   try {
     const balance = await loyaltyService.getBalance(businessId, customerAddress);
-    // MODIFIED: Return an object with a 'balance' key
     res.json({ balance: balance });
   } catch (error) {
     console.error("Error fetching balance:", error);
     res.status(500).json({ error: "Failed to fetch balance", details: error.message });
+  }
+});
+
+// NEW: Add a product to a business's catalog
+router.post("/:businessId/products", authenticateBusiness, (req, res) => {
+  const { businessId } = req.params;
+  const { name, priceRp, loyaltyPoints } = req.body;
+  const callingBusiness = req.business;
+
+  if (callingBusiness.id !== businessId) {
+    return res
+      .status(403)
+      .json({ error: "Forbidden", message: "You can only add products to your own business catalog." });
+  }
+
+  if (!name || priceRp === undefined || loyaltyPoints === undefined) {
+    return res.status(400).json({ error: "Missing required fields: name, priceRp, loyaltyPoints." });
+  }
+  if (isNaN(parseFloat(priceRp)) || parseFloat(priceRp) <= 0) {
+    return res.status(400).json({ error: "Invalid priceRp. Must be a positive number." });
+  }
+  if (isNaN(parseInt(loyaltyPoints, 10)) || parseInt(loyaltyPoints, 10) < 0) {
+    return res.status(400).json({ error: "Invalid loyaltyPoints. Must be a non-negative integer." });
+  }
+
+  try {
+    const newProduct = productService.addProduct(businessId, name, priceRp, loyaltyPoints);
+    res.status(201).json({ message: "Product added successfully.", product: newProduct, success: true });
+  } catch (error) {
+    console.error("Error adding product:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to add product." });
+  }
+});
+
+// NEW: Get all products for a specific business
+router.get("/:businessId/products", (req, res) => {
+  const { businessId } = req.params;
+  try {
+    const products = productService.getProductsByBusinessId(businessId);
+    res.status(200).json({ products, success: true });
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    res.status(500).json({ success: false, error: error.message || "Failed to fetch products." });
   }
 });
 

@@ -3,16 +3,15 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWeb3 } from "@/contexts/Web3Context";
-// Corrected import names: getBalance, redeemPoints (though redeemPoints is not used in this file's logic now)
 import { getBusinessContractInfo, getBalance, redeemPoints } from "@/services/api";
-import { Loader2, DollarSign, Gift, XCircle, CheckCircle, Info } from "lucide-react";
+import { Loader2, DollarSign, Gift, XCircle, CheckCircle, Info, ArrowLeft } from "lucide-react"; // Added ArrowLeft
 import Link from "next/link";
 import { ethers } from "ethers"; // Import ethers
 
 export default function RedeemPointsPage() {
   const router = useRouter();
   const { businessId } = useParams(); // Get businessId from URL
-  const { user, isAuthenticated, isUser } = useAuth();
+  const { user, isAuthenticated, isUser, loading: authLoading, currentUser } = useAuth(); // Get currentUser for token
   const { account, provider, signer } = useWeb3();
 
   const [businessContract, setBusinessContract] = useState(null);
@@ -24,6 +23,12 @@ export default function RedeemPointsPage() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (authLoading) {
+      setIsLoading(true);
+      return;
+    }
+
+    // CRITICAL CHECK: Ensure it's a USER and authenticated
     if (!isAuthenticated || !isUser) {
       setMessage({ type: "error", text: "Please log in as a user to access this page." });
       setIsLoading(false);
@@ -35,14 +40,16 @@ export default function RedeemPointsPage() {
       setError(null);
       setMessage(null);
       try {
-        if (!businessId || !account) {
-          throw new Error("Business ID or connected wallet missing.");
+        if (!businessId || !account || !user?.id) {
+          // Ensure user.id is also available
+          throw new Error("Business ID, connected wallet, or user ID missing.");
         }
 
+        // Fetch business contract info (no token needed as this is public info)
         const contractInfo = await getBusinessContractInfo(businessId);
         setBusinessContract(contractInfo);
 
-        // Use the correct getBalance function name
+        // Fetch user's balance for this specific business, using their connected wallet address
         const balance = await getBalance(businessId, account);
         setCurrentBalance(balance);
       } catch (err) {
@@ -53,10 +60,15 @@ export default function RedeemPointsPage() {
       }
     };
 
-    if (user && account && businessId) {
+    // Only fetch if user is authenticated, is a user, and has a connected wallet
+    if (user?.id && account && businessId && currentUser?.token) {
+      // Ensure token is available
       fetchRedeemData();
+    } else if (user?.id && !account && currentUser?.token) {
+      setMessage({ type: "info", text: "Please connect your wallet to view your loyalty points." });
+      setIsLoading(false);
     }
-  }, [user, isAuthenticated, isUser, account, businessId]);
+  }, [user, isAuthenticated, isUser, account, businessId, authLoading, currentUser]); // Added currentUser to dependencies
 
   const handleRedeemPoints = async (e) => {
     e.preventDefault();
@@ -90,7 +102,7 @@ export default function RedeemPointsPage() {
 
       setMessage({ type: "success", text: `Successfully redeemed ${amount} points!` });
       setRedeemAmount("");
-      // Use the correct getBalance function name
+      // Refresh balance after successful redemption
       const updatedBalance = await getBalance(businessId, account);
       setCurrentBalance(updatedBalance);
     } catch (err) {
@@ -102,7 +114,8 @@ export default function RedeemPointsPage() {
     }
   };
 
-  if (isLoading) {
+  // Show loading spinner if auth is still loading or page data is loading
+  if (authLoading || isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <Loader2 className="h-12 w-12 animate-spin text-polka-pink" />
@@ -111,6 +124,7 @@ export default function RedeemPointsPage() {
     );
   }
 
+  // If not authenticated or not a user, show access denied
   if (!isAuthenticated || !isUser) {
     return (
       <div className="text-center py-20">
@@ -118,8 +132,6 @@ export default function RedeemPointsPage() {
         <h2 className="text-2xl font-bold text-slate-800 mb-4">Access Denied</h2>
         <p className="text-slate-600 mb-6">You must be logged in as a user to view this page.</p>
         <Link href="/login" className="btn-primary-dark">
-          {" "}
-          {/* Changed to generic /login */}
           Login as User
         </Link>
       </div>
@@ -141,15 +153,29 @@ export default function RedeemPointsPage() {
 
   return (
     <div className="max-w-xl mx-auto p-6 bg-white rounded-xl shadow-lg">
+      <Link href="/user/dashboard" className="inline-flex items-center text-polka-pink hover:underline mb-6">
+        <ArrowLeft className="h-4 w-4 mr-1" /> Back to Dashboard
+      </Link>
+
       <h1 className="text-3xl font-bold text-slate-800 mb-6 text-center">Redeem Points for {businessContract.name}</h1>
 
       {message && (
         <div
           className={`p-4 mb-4 rounded-md flex items-center ${
-            message.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+            message.type === "success"
+              ? "bg-green-100 text-green-800"
+              : message.type === "error"
+              ? "bg-red-100 text-red-800"
+              : "bg-blue-100 text-blue-800"
           }`}
         >
-          {message.type === "success" ? <CheckCircle className="h-5 w-5 mr-2" /> : <XCircle className="h-5 w-5 mr-2" />}
+          {message.type === "success" ? (
+            <CheckCircle className="h-5 w-5 mr-2" />
+          ) : message.type === "error" ? (
+            <XCircle className="h-5 w-5 mr-2" />
+          ) : (
+            <Info className="h-5 w-5 mr-2" />
+          )}
           {message.text}
         </div>
       )}
@@ -202,12 +228,6 @@ export default function RedeemPointsPage() {
         </button>
         {!account && <p className="text-red-500 text-sm mt-2">Please connect your wallet to redeem points.</p>}
       </form>
-
-      <div className="mt-8 text-center">
-        <Link href="/user/dashboard" className="btn-secondary-light">
-          Back to Dashboard
-        </Link>
-      </div>
     </div>
   );
 }

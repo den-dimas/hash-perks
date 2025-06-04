@@ -1,5 +1,7 @@
 {
   "lantis": {
-    "password": "123"
+    "id": "lantis",
+    "password": "$2b$10$1ttVaipjBbVIWginZDJDQepUfXiGG1Yuq56qsJjxmIoAt/RuRlndO",
+    "role": "business"
   }
 }

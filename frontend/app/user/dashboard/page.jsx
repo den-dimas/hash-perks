@@ -2,30 +2,40 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWeb3 } from "@/contexts/Web3Context";
-import { getBusinessContractInfo, getUserSubscriptions, subscribeToBusiness, getBalance } from "@/services/api";
-import { Loader2, Wallet, CheckCircle, XCircle, Info, ArrowRight } from "lucide-react"; // Removed ExternalLink as it's not used here
+import {
+  getBusinessContractInfo,
+  getUserSubscriptions,
+  subscribeToBusiness,
+  getBalance,
+  addDummyBalance,
+  getDummyBalance,
+} from "@/services/api"; // MODIFIED: Import new API calls
+import { Loader2, Wallet, CheckCircle, XCircle, Info, ArrowRight, DollarSign, PlusCircle } from "lucide-react"; // MODIFIED: Add new icons
 import Link from "next/link";
 import { ethers } from "ethers";
 
 export default function UserDashboard() {
-  const { user, isAuthenticated, isUser, loading: authLoading, currentUser } = useAuth(); // Get currentUser for token
+  const { user, isAuthenticated, isUser, loading: authLoading, currentUser, refreshCurrentUser } = useAuth(); // MODIFIED: Add refreshCurrentUser
   const { account, provider, signer } = useWeb3();
   const [subscriptions, setSubscriptions] = useState({});
-  const [availableBusinesses, setAvailableBusinesses] = useState([]); // To store businesses user can subscribe to
+  const [availableBusinesses, setAvailableBusinesses] = useState([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubscribing, setIsSubscribing] = useState(false);
-  const [message, setMessage] = useState(null); // For success/error messages
+  const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
 
+  // NEW: Dummy Balance State
+  const [dummyBalance, setDummyBalance] = useState(0);
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [isToppingUp, setIsToppingUp] = useState(false);
+
   useEffect(() => {
-    // Only proceed if auth is not loading and user is authenticated as a user
     if (authLoading) {
-      setIsLoading(true); // Keep loading if auth is still determining state
+      setIsLoading(true);
       return;
     }
 
-    // CRITICAL CHECK: Ensure it's a USER and authenticated
     if (!isAuthenticated || !isUser) {
       setMessage({ type: "error", text: "Please log in as a user to access this page." });
       setIsLoading(false);
@@ -38,8 +48,6 @@ export default function UserDashboard() {
       setMessage(null);
       try {
         if (!user?.id || !account || !currentUser?.token) {
-          // Ensure token is available
-          // If user.id, account, or token is missing, we can't fetch user-specific data
           setError(
             "User ID, connected wallet, or authentication token missing. Please ensure you are logged in and wallet is connected."
           );
@@ -53,18 +61,22 @@ export default function UserDashboard() {
         const userSubs = await getUserSubscriptions(user.id, currentUser.token);
         setSubscriptions(userSubs);
 
+        // NEW: Fetch dummy balance
+        const balanceResponse = await getDummyBalance(user.id, currentUser.token);
+        setDummyBalance(balanceResponse.balanceRp);
+
         // Fetch all businesses to determine which ones the user can subscribe to
-        const allBusinesses = await getBusinessContractInfo("all"); // No token needed for 'all'
+        const allBusinesses = await getBusinessContractInfo("all");
         const businessesArray = Object.entries(allBusinesses).map(([id, info]) => ({ id, ...info }));
 
         // Filter out businesses the user is already subscribed to
         const unsubscribedBusinesses = businessesArray.filter(
-          (business) => !userSubs[business.id] && business.id !== "defaultBusinessId" // Exclude default business
+          (business) => !userSubs[business.id] && business.id !== "defaultBusinessId"
         );
         setAvailableBusinesses(unsubscribedBusinesses);
 
         if (unsubscribedBusinesses.length > 0) {
-          setSelectedBusinessId(unsubscribedBusinesses[0].id); // Pre-select the first available business
+          setSelectedBusinessId(unsubscribedBusinesses[0].id);
         }
 
         // Fetch balances for subscribed businesses
@@ -89,20 +101,17 @@ export default function UserDashboard() {
       }
     };
 
-    // Only fetch data if user object is available AND account is connected
     if (user?.id && account && currentUser?.token) {
       fetchDashboardData();
     } else if (user?.id && !account && currentUser?.token) {
-      // If user is logged in but wallet not connected, show message
       setMessage({ type: "info", text: "Please connect your wallet to view your loyalty points and subscribe." });
       setIsLoading(false);
     }
-  }, [user, isAuthenticated, isUser, account, authLoading, currentUser]); // Add currentUser to dependencies
+  }, [user, isAuthenticated, isUser, account, authLoading, currentUser]);
 
   const handleSubscribe = async (e) => {
     e.preventDefault();
     if (!selectedBusinessId || !account || !currentUser?.token) {
-      // Ensure token is available
       setError("Please select a business, connect your wallet, and ensure you are logged in.");
       return;
     }
@@ -112,13 +121,12 @@ export default function UserDashboard() {
     setMessage(null);
 
     try {
-      // Call the API to subscribe the user to the selected business, passing the token
       await subscribeToBusiness(user.id, selectedBusinessId, account, currentUser.token);
 
       setMessage({ type: "success", text: `Successfully subscribed to ${selectedBusinessId}!` });
 
       // Refresh subscriptions and available businesses
-      const userSubs = await getUserSubscriptions(user.id, currentUser.token); // Pass token
+      const userSubs = await getUserSubscriptions(user.id, currentUser.token);
       setSubscriptions(userSubs);
 
       const allBusinesses = await getBusinessContractInfo("all");
@@ -150,7 +158,39 @@ export default function UserDashboard() {
     }
   };
 
-  // Show loading spinner if auth is still loading or page data is loading
+  // NEW: Handle top-up of dummy balance
+  const handleTopUpBalance = async (e) => {
+    e.preventDefault();
+    if (!user?.id || !currentUser?.token || !topUpAmount) {
+      setError("Please enter an amount and ensure you are logged in.");
+      return;
+    }
+
+    setIsToppingUp(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const amount = parseFloat(topUpAmount);
+      if (isNaN(amount) || amount <= 0) {
+        throw new Error("Amount must be a positive number.");
+      }
+
+      const result = await addDummyBalance(user.id, amount, currentUser.token);
+      setDummyBalance(result.newBalanceRp);
+      // Also update currentUser context's balance
+      refreshCurrentUser();
+      setMessage({ type: "success", text: `Successfully added Rp${amount.toLocaleString()} to your balance!` });
+      setTopUpAmount("");
+    } catch (err) {
+      console.error("Error topping up balance:", err);
+      setError(err.message || "Failed to add balance.");
+      setMessage({ type: "error", text: err.message || "Failed to add balance." });
+    } finally {
+      setIsToppingUp(false);
+    }
+  };
+
   if (authLoading || isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -160,7 +200,6 @@ export default function UserDashboard() {
     );
   }
 
-  // If not authenticated or not a user, show access denied
   if (!isAuthenticated || !isUser) {
     return (
       <div className="text-center py-20">
@@ -215,8 +254,38 @@ export default function UserDashboard() {
             <span className="font-medium">Address:</span> {account}
           </p>
         ) : (
-          <p className="text-red-500">Wallet not connected. Please connect your wallet to interact.</p>
+          <p className="text-red-500">
+            Wallet not connected. Please connect your wallet to view your loyalty points and subscribe.
+          </p>
         )}
+      </div>
+
+      {/* NEW: Dummy Balance Section */}
+      <div className="mb-8 p-4 border border-slate-200 rounded-lg bg-slate-50">
+        <h2 className="text-xl font-semibold text-slate-700 mb-3 flex items-center">
+          <DollarSign className="h-5 w-5 mr-2 text-polka-pink" /> My Dummy Balance
+        </h2>
+        <p className="text-2xl font-bold text-slate-800 mb-4">Rp{dummyBalance.toLocaleString()}</p>
+        <form onSubmit={handleTopUpBalance} className="flex space-x-2">
+          <input
+            type="number"
+            className="input-field-modern flex-grow"
+            value={topUpAmount}
+            onChange={(e) => setTopUpAmount(e.target.value)}
+            placeholder="Amount to top up (Rp)"
+            min="1"
+            step="any"
+            required
+            disabled={isToppingUp}
+          />
+          <button
+            type="submit"
+            className="btn-primary-dark px-4 py-2.5 flex items-center"
+            disabled={isToppingUp || !user?.id || !currentUser?.token}
+          >
+            {isToppingUp ? <Loader2 className="h-5 w-5 animate-spin" /> : <PlusCircle className="h-5 w-5" />}
+          </button>
+        </form>
       </div>
 
       <div className="mb-8">
@@ -235,12 +304,18 @@ export default function UserDashboard() {
                 <p className="text-md font-bold text-slate-800 mt-2">
                   Points: {sub.balance !== undefined ? sub.balance : "Loading..."}
                 </p>
-                <Link
-                  href={`/user/redeem/${businessId}`}
-                  className="mt-4 inline-flex items-center text-polka-pink hover:underline text-sm"
-                >
-                  Redeem Points <ArrowRight className="ml-1 h-4 w-4" />
-                </Link>
+                <div className="flex justify-between items-center mt-4">
+                  <Link
+                    href={`/user/redeem/${businessId}`}
+                    className="inline-flex items-center text-polka-pink hover:underline text-sm"
+                  >
+                    Redeem Points <ArrowRight className="ml-1 h-4 w-4" />
+                  </Link>
+                  {/* NEW: Link to buy products from this business */}
+                  <Link href={`/user/buy-products/${businessId}`} className="btn-secondary-light text-sm px-3 py-1.5">
+                    Buy Products
+                  </Link>
+                </div>
               </div>
             ))}
           </div>

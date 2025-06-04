@@ -2,8 +2,25 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWeb3 } from "@/contexts/Web3Context";
-import { getBusinessContractInfo, issuePoints, getBalance } from "@/services/api";
-import { Loader2, Wallet, DollarSign, Send, Info, XCircle, CheckCircle, ExternalLink } from "lucide-react";
+import {
+  getBusinessContractInfo,
+  issuePoints,
+  getBalance,
+  addProductToCatalog,
+  getProductsByBusiness,
+} from "@/services/api";
+import {
+  Loader2,
+  Wallet,
+  DollarSign,
+  Send,
+  Info,
+  XCircle,
+  CheckCircle,
+  ExternalLink,
+  PlusCircle,
+  ShoppingBag,
+} from "lucide-react";
 import Link from "next/link";
 import { ethers } from "ethers";
 
@@ -17,8 +34,15 @@ export default function BusinessDashboard() {
   const [isLoading, setIsLoading] = useState(true); // Overall loading for the page
   const [isIssuing, setIsIssuing] = useState(false);
   const [isFetchingBalance, setIsFetchingBalance] = useState(false);
-  const [message, setMessage] = useState(null); // For success/error messages
+  const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
+
+  // NEW: Product Catalog State
+  const [products, setProducts] = useState([]);
+  const [newProductName, setNewProductName] = useState("");
+  const [newProductPrice, setNewProductPrice] = useState("");
+  const [newProductLoyaltyPoints, setNewProductLoyaltyPoints] = useState("");
+  const [isAddingProduct, setIsAddingProduct] = useState(false);
 
   useEffect(() => {
     // Only proceed if auth is not loading and user is authenticated as a business
@@ -43,6 +67,10 @@ export default function BusinessDashboard() {
         if (business?.id && currentUser?.token) {
           const contractInfo = await getBusinessContractInfo(business.id, currentUser.token); // Pass token
           setBusinessContract(contractInfo);
+
+          // NEW: Fetch product catalog for this business
+          const productData = await getProductsByBusiness(business.id);
+          setProducts(productData.products);
         } else {
           // This case should ideally not be hit if isAuthenticated and isBusiness are true
           // but if business.id or token is somehow missing, it's an issue.
@@ -50,9 +78,9 @@ export default function BusinessDashboard() {
           setBusinessContract(null);
         }
       } catch (err) {
-        console.error("Error fetching business contract info:", err);
-        setError(err.message || "Failed to load business contract information.");
-        setBusinessContract(null); // Ensure contract is null on error
+        console.error("Error fetching business dashboard data:", err);
+        setError(err.message || "Failed to load business dashboard data.");
+        setBusinessContract(null);
       } finally {
         setIsLoading(false); // End loading after data fetch attempt
       }
@@ -132,7 +160,50 @@ export default function BusinessDashboard() {
     }
   };
 
-  // Show loading spinner if auth is still loading or page data is loading
+  // NEW: Handle adding a new product to the catalog
+  const handleAddProduct = async (e) => {
+    e.preventDefault();
+    if (!business?.id || !currentUser?.token || !newProductName || !newProductPrice || !newProductLoyaltyPoints) {
+      setError("Please fill all product fields and ensure you are logged in.");
+      return;
+    }
+
+    setIsAddingProduct(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const price = parseFloat(newProductPrice);
+      const points = parseInt(newProductLoyaltyPoints, 10);
+
+      if (isNaN(price) || price <= 0) {
+        throw new Error("Product price must be a positive number.");
+      }
+      if (isNaN(points) || points < 0) {
+        throw new Error("Loyalty points must be a non-negative integer.");
+      }
+
+      const productData = {
+        name: newProductName,
+        priceRp: price,
+        loyaltyPoints: points,
+      };
+
+      const result = await addProductToCatalog(business.id, productData, currentUser.token);
+      setProducts((prev) => [...prev, result.product]);
+      setMessage({ type: "success", text: `Product "${result.product.name}" added successfully!` });
+      setNewProductName("");
+      setNewProductPrice("");
+      setNewProductLoyaltyPoints("");
+    } catch (err) {
+      console.error("Error adding product:", err);
+      setError(err.message || "Failed to add product.");
+      setMessage({ type: "error", text: err.message || "Failed to add product." });
+    } finally {
+      setIsAddingProduct(false);
+    }
+  };
+
   if (authLoading || isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -142,7 +213,6 @@ export default function BusinessDashboard() {
     );
   }
 
-  // If not authenticated or not a business, show access denied
   if (!isAuthenticated || !isBusiness) {
     return (
       <div className="text-center py-20">
@@ -156,7 +226,6 @@ export default function BusinessDashboard() {
     );
   }
 
-  // If businessContract is null (e.g., due to an error during fetchBusinessData)
   if (!businessContract) {
     return (
       <div className="text-center py-20">
@@ -235,8 +304,102 @@ export default function BusinessDashboard() {
         </p>
       </div>
 
+      {/* NEW: Product Catalog Management */}
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-slate-800 mb-4">Issue Loyalty Points</h2>
+        <h2 className="text-2xl font-bold text-slate-800 mb-4 flex items-center">
+          <ShoppingBag className="h-6 w-6 mr-2 text-polka-pink" /> Product Catalog
+        </h2>
+
+        {/* Add New Product Form */}
+        <div className="p-4 border border-slate-200 rounded-lg bg-slate-50 mb-6">
+          <h3 className="text-lg font-semibold text-slate-700 mb-3 flex items-center">
+            <PlusCircle className="h-5 w-5 mr-2 text-polka-pink" /> Add New Product
+          </h3>
+          <form onSubmit={handleAddProduct} className="space-y-3">
+            <div>
+              <label htmlFor="productName" className="block text-sm font-medium text-slate-700 mb-1">
+                Product Name:
+              </label>
+              <input
+                type="text"
+                id="productName"
+                className="input-field-modern"
+                value={newProductName}
+                onChange={(e) => setNewProductName(e.target.value)}
+                placeholder="e.g., Noodle"
+                required
+                disabled={isAddingProduct}
+              />
+            </div>
+            <div>
+              <label htmlFor="productPrice" className="block text-sm font-medium text-slate-700 mb-1">
+                Price (Rp):
+              </label>
+              <input
+                type="number"
+                id="productPrice"
+                className="input-field-modern"
+                value={newProductPrice}
+                onChange={(e) => setNewProductPrice(e.target.value)}
+                placeholder="e.g., 5000"
+                min="0.01"
+                step="any"
+                required
+                disabled={isAddingProduct}
+              />
+            </div>
+            <div>
+              <label htmlFor="productLoyaltyPoints" className="block text-sm font-medium text-slate-700 mb-1">
+                Loyalty Points:
+              </label>
+              <input
+                type="number"
+                id="productLoyaltyPoints"
+                className="input-field-modern"
+                value={newProductLoyaltyPoints}
+                onChange={(e) => setNewProductLoyaltyPoints(e.target.value)}
+                placeholder="e.g., 5"
+                min="0"
+                step="1"
+                required
+                disabled={isAddingProduct}
+              />
+            </div>
+            <button
+              type="submit"
+              className="btn-primary-dark w-full"
+              disabled={isAddingProduct || !business?.id || !currentUser?.token}
+            >
+              {isAddingProduct ? (
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              ) : (
+                <PlusCircle className="h-5 w-5 mr-2" />
+              )}
+              {isAddingProduct ? "Adding Product..." : "Add Product"}
+            </button>
+          </form>
+        </div>
+
+        {/* Existing Products List */}
+        <h3 className="text-xl font-semibold text-slate-700 mb-3">Your Products</h3>
+        {products.length === 0 ? (
+          <p className="text-slate-600">No products added to your catalog yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {products.map((product) => (
+              <div key={product.id} className="card-modern">
+                <h4 className="text-lg font-semibold text-polka-dark">{product.name}</h4>
+                <p className="text-slate-600">Price: Rp{product.priceRp.toLocaleString()}</p>
+                <p className="text-slate-600">Loyalty Points: {product.loyaltyPoints}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Existing Issue Loyalty Points Section */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-slate-800 mb-4">Manually Issue Loyalty Points</h2>
         <form onSubmit={handleIssuePoints} className="space-y-4">
           <div>
             <label htmlFor="customerAddress" className="block text-sm font-medium text-slate-700 mb-1">
@@ -271,7 +434,7 @@ export default function BusinessDashboard() {
           <button
             type="submit"
             className="btn-primary-dark w-full"
-            disabled={isIssuing || !account || !businessContract || !currentUser?.token} // Disable if token is missing
+            disabled={isIssuing || !account || !businessContract || !currentUser?.token}
           >
             {isIssuing ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Send className="h-5 w-5 mr-2" />}
             {isIssuing ? "Issuing Points..." : "Issue Points"}
@@ -281,6 +444,7 @@ export default function BusinessDashboard() {
         </form>
       </div>
 
+      {/* Existing Check Customer Balance Section */}
       <div>
         <h2 className="text-2xl font-bold text-slate-800 mb-4">Check Customer Balance</h2>
         <div className="flex space-x-2">

@@ -13,12 +13,14 @@ export default function RegisterPage() {
 
   // Handler for user registration
   const handleUserRegister = async (userId, password, userWalletAddress) => {
+    // userWalletAddress is received here
     setMessage(null);
     try {
-      const response = await registerUser(userId, password);
+      // MODIFIED: Pass userWalletAddress to registerUser API call
+      const response = await registerUser(userId, password, userWalletAddress);
       if (response.success) {
         setMessage({ type: "success", text: "User registration successful! Please log in." });
-        router.push("/login"); // MODIFIED: Redirect to generic /login
+        router.push("/login");
         return { success: true, message: "User registration successful!" };
       } else {
         return { success: false, message: response.message || "User registration failed." };
@@ -36,7 +38,7 @@ export default function RegisterPage() {
       const response = await registerBusiness(businessId, name, symbol, ownerAddress, password);
       if (response.success) {
         setMessage({ type: "success", text: "Business registration successful! Please log in." });
-        router.push("/login"); // MODIFIED: Redirect to generic /login
+        router.push("/login");
         return { success: true, message: "Business registration successful!" };
       } else {
         return { success: false, message: response.message || "Business registration failed." };

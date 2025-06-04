@@ -1,23 +1,28 @@
-import { Inter } from "next/font/google"; // Still needed for font definition
-import ClientRootLayout from "./_layout"; // Import the actual client layout component
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { Navbar } from "./(components)/layout/Navbar"; // Adjusted path
+import { Web3Provider } from "@/contexts/Web3Context"; // Adjusted path
+import { AuthProvider } from "@/contexts/AuthContext"; // Adjusted path
 
-const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600", "700"] });
+const inter = Inter({ subsets: ["latin"] });
 
-// Metadata export for the Server Component
 export const metadata = {
-  title: "HashPerks | Modern Loyalty Rewards",
-  description: "Decentralized Loyalty Rewards Platform on the Blockchain",
+  title: "HashPerks",
+  description: "Web3 Loyalty Program",
 };
 
-// This is the root layout for the application.
-// It renders the ClientRootLayout which contains all the client-side logic and providers.
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      {/* Apply the font to the body here, as it's a server component. */}
-      {/* The actual client-side layout will be rendered inside. */}
-      <body className={`${inter.className} bg-slate-50`}>
-        <ClientRootLayout>{children}</ClientRootLayout>
+      <body className={inter.className}>
+        <Web3Provider>
+          <AuthProvider>
+            <Navbar />
+            <main className="container mx-auto p-4 md:p-6 min-h-[calc(100vh-6rem)] flex flex-col justify-center">
+              {children}
+            </main>
+          </AuthProvider>
+        </Web3Provider>
       </body>
     </html>
   );

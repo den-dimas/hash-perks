@@ -10,12 +10,13 @@ const handleResponse = async (response) => {
 
 // --- Auth & Registration API Calls ---
 
-export const registerUser = async (userId, password) => {
+// MODIFIED: registerUser now accepts walletAddress and sends it
+export const registerUser = async (userId, password, walletAddress) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/user/register`, {
+    const response = await fetch(`${API_BASE_URL}/auth/register/user`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, password }),
+      body: JSON.stringify({ userId, password, walletAddress }), // Include walletAddress
     });
     return handleResponse(response);
   } catch (error) {
@@ -26,7 +27,7 @@ export const registerUser = async (userId, password) => {
 
 export const registerBusiness = async (businessId, name, symbol, ownerAddress, password) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/business/register`, {
+    const response = await fetch(`${API_BASE_URL}/auth/register/business`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ businessId, name, symbol, ownerAddress, password }),
@@ -118,12 +119,11 @@ export const issuePoints = async (businessId, customerAddress, amount, token) =>
   }
 };
 
-// MODIFIED: Extracts 'balance' from the response object
 export const getBalance = async (businessId, customerAddress) => {
   try {
     const response = await fetch(`${API_BASE_URL}/businesses/${businessId}/balance/${customerAddress}`);
     const data = await handleResponse(response);
-    return data.balance; // Extract the balance value from the returned object
+    return data.balance;
   } catch (error) {
     console.error("Error getting balance:", error);
     throw error;
@@ -181,6 +181,96 @@ export const getUserSubscriptions = async (userId, token) => {
     return handleResponse(response);
   } catch (error) {
     console.error("Error getting user subscriptions:", error);
+    throw error;
+  }
+};
+
+// --- Dummy Currency & Product Catalog API Calls ---
+
+export const addDummyBalance = async (userId, amount, token) => {
+  if (!token) {
+    throw new Error("User not authenticated. Please log in.");
+  }
+  try {
+    const response = await fetch(`${API_BASE_URL}/user/${userId}/add-balance`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-id": token,
+      },
+      body: JSON.stringify({ amount }),
+    });
+    return handleResponse(response);
+  } catch (error) {
+    console.error("Error adding dummy balance:", error);
+    throw error;
+  }
+};
+
+export const getDummyBalance = async (userId, token) => {
+  if (!token) {
+    throw new Error("User not authenticated. Please log in.");
+  }
+  try {
+    const response = await fetch(`${API_BASE_URL}/user/${userId}/balance-rp`, {
+      headers: {
+        "x-user-id": token,
+      },
+    });
+    return handleResponse(response);
+  } catch (error) {
+    console.error("Error fetching dummy balance:", error);
+    throw error;
+  }
+};
+
+export const addProductToCatalog = async (businessId, productData, token) => {
+  if (!token) {
+    throw new Error("Business not authenticated. Please log in.");
+  }
+  try {
+    const response = await fetch(`${API_BASE_URL}/business/${businessId}/products`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-business-id": token,
+      },
+      body: JSON.stringify(productData),
+    });
+    return handleResponse(response);
+  } catch (error) {
+    console.error("Error adding product to catalog:", error);
+    throw error;
+  }
+};
+
+export const getProductsByBusiness = async (businessId) => {
+  try {
+    // No token needed for this public endpoint
+    const response = await fetch(`${API_BASE_URL}/business/${businessId}/products`);
+    return handleResponse(response);
+  } catch (error) {
+    console.error("Error fetching products for business:", error);
+    throw error;
+  }
+};
+
+export const buyProduct = async (userId, businessId, productId, token) => {
+  if (!token) {
+    throw new Error("User not authenticated. Please log in.");
+  }
+  try {
+    const response = await fetch(`${API_BASE_URL}/user/${userId}/buy-product`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-id": token,
+      },
+      body: JSON.stringify({ businessId, productId }),
+    });
+    return handleResponse(response);
+  } catch (error) {
+    console.error("Error buying product:", error);
     throw error;
   }
 };
